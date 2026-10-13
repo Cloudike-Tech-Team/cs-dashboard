@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const DEVICES = ['웹', 'CLDAstream Win', 'CLDAstream MAC', 'PC client Win', 'PC client MAC', 'Android', 'IOS'];
+  const DEVICES = ['웹', 'CLDAstream Win', 'CLDAstream MAC', 'PC client Win', 'PC client MAC', 'Android', 'IOS', '기타'];
   const TZ = 'Asia/Seoul';       // 월 경계·표시·입력 모두 KST 기준으로 통일
   const TZ_OFFSET = '+09:00';    // KST 는 서머타임이 없어 고정 오프셋으로 충분
   const LS_REPORTER = 'cs.lastReporter';

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CS 대시보드</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 로그인 -->
+  <section id="login-view" class="login" hidden>
+    <form id="login-form" class="card login-card">
+      <h1>CS 대시보드</h1>
+      <p class="muted">팀 계정으로 로그인하세요.</p>
+      <label>이메일<input id="login-email" type="email" autocomplete="username" required></label>
+      <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
+      <button type="submit" class="btn primary">로그인</button>
+      <p id="login-error" class="error" hidden></p>
+    </form>
+  </section>
+
+  <!-- 메인 -->
+  <section id="app-view" hidden>
+    <header class="topbar">
+      <h1>CS 대시보드</h1>
+      <div class="topbar-right">
+        <span id="user-email" class="muted"></span>
+        <button id="logout-btn" class="btn ghost" type="button">로그아웃</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="toolbar">
+        <div class="month-nav">
+          <button id="prev-month" class="btn ghost" type="button" aria-label="이전 달">◀</button>
+          <input id="month-input" type="month" aria-label="조회 월">
+          <button id="next-month" class="btn ghost" type="button" aria-label="다음 달">▶</button>
+          <button id="this-month" class="btn ghost" type="button">이번 달</button>
+        </div>
+        <div class="filters">
+          <input id="search-input" type="search" placeholder="고객사·현상·티켓 검색">
+          <select id="device-filter" aria-label="기기 필터">
+            <option value="">전체 기기</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button id="export-btn" class="btn" type="button">CSV 내보내기</button>
+          <button id="new-btn" class="btn primary" type="button">+ 새 CS</button>
+        </div>
+      </div>
+
+      <div id="month-chips" class="chips" aria-label="최근 월별 건수"></div>
+
+      <p id="summary" class="muted"></p>
+      <p id="list-error" class="error" hidden></p>
+
+      <div class="table-wrap">
+        <table class="cs-table">
+          <thead>
+            <tr>
+              <th>접수 일시</th>
+              <th>고객사 / 유저</th>
+              <th>기기</th>
+              <th>버전</th>
+              <th>현상설명</th>
+              <th>접수자</th>
+              <th>티켓</th>
+            </tr>
+          </thead>
+          <tbody id="cs-tbody"></tbody>
+        </table>
+      </div>
+      <p id="empty" class="empty" hidden>이 달에 접수된 CS가 없습니다.</p>
+    </main>
+  </section>
+
+  <!-- 등록/수정 모달 -->
+  <dialog id="cs-dialog">
+    <form id="cs-form" class="cs-form" novalidate>
+      <header class="dialog-head">
+        <h2 id="dialog-title">새 CS</h2>
+        <button type="button" class="btn ghost" data-close aria-label="닫기">✕</button>
+      </header>
+
+      <div class="grid">
+        <label>접수자 *<input name="reporter" maxlength="100" required></label>
+        <label>고객사, 유저 *<input name="customer" maxlength="200" required></label>
+        <label>날짜 *<input name="received_at" type="datetime-local" required></label>
+        <label>기기 *<select name="device" required></select></label>
+        <label>버전<input name="version" maxlength="100"></label>
+      </div>
+
+      <label>현상설명<textarea name="description" rows="3" maxlength="10000"></textarea></label>
+      <label>특이사항<textarea name="notes" rows="2" maxlength="10000"></textarea></label>
+
+      <fieldset class="list-field">
+        <legend>처리 타임라인</legend>
+        <div class="list-items" data-list="timeline"></div>
+        <button type="button" class="btn ghost small" data-add="timeline">+ 항목 추가</button>
+      </fieldset>
+
+      <fieldset class="list-field">
+        <legend>티켓</legend>
+        <div class="list-items" data-list="tickets"></div>
+        <button type="button" class="btn ghost small" data-add="tickets">+ 티켓 추가</button>
+      </fieldset>
+
+      <p id="form-meta" class="muted small"></p>
+      <p id="form-error" class="error" hidden></p>
+
+      <footer class="dialog-foot">
+        <div class="delete-zone">
+          <button type="button" id="delete-btn" class="btn danger ghost" hidden>삭제</button>
+          <span id="delete-confirm" hidden>
+            정말 삭제할까요?
+            <button type="button" id="delete-yes" class="btn danger small">삭제</button>
+            <button type="button" id="delete-no" class="btn ghost small">취소</button>
+          </span>
+        </div>
+        <div>
+          <button type="button" class="btn ghost" data-close>취소</button>
+          <button type="submit" id="save-btn" class="btn primary">저장</button>
+        </div>
+      </footer>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

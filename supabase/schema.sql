@@ -12,7 +12,7 @@ create table if not exists public.cs_tickets (
   received_at  timestamptz not null default now(),                              -- 날짜(접수 일시)
   device       text not null check (device in (
                  '웹', 'CLDAstream Win', 'CLDAstream MAC',
-                 'PC client Win', 'PC client MAC', 'Android', 'IOS')),          -- 기기
+                 'PC client Win', 'PC client MAC', 'Android', 'IOS', '기타')),  -- 기기
   version      text not null default '' check (char_length(version) <= 100),    -- 버전
   description  text not null default '' check (char_length(description) <= 10000), -- 현상설명
   notes        text not null default '' check (char_length(notes) <= 10000),   -- 특이사항

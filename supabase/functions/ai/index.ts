@@ -58,7 +58,13 @@ Deno.serve(async (req) => {
     if (authErr || !user) throw new HttpError(401, '로그인 세션이 유효하지 않습니다. 다시 로그인하세요.');
 
     const body = validateRequest(await req.json().catch(() => null));
-    const claude = new Anthropic({ apiKey });
+    // 워크스페이스에 묶이지 않은(기본) API 키는 anthropic-workspace-id 헤더가 필요함.
+    // Console → Settings → Workspaces 의 ID (wrkspc_...) 를 ANTHROPIC_WORKSPACE_ID secret 으로 등록.
+    const workspaceId = Deno.env.get('ANTHROPIC_WORKSPACE_ID');
+    const claude = new Anthropic({
+      apiKey,
+      defaultHeaders: workspaceId ? { 'anthropic-workspace-id': workspaceId } : undefined,
+    });
 
     // ── parse
     if (body.mode === 'parse') {
@@ -117,7 +123,7 @@ Deno.serve(async (req) => {
       console.error('anthropic', e.status, e.message);
       const msg = e.status === 401 ? 'Claude API 키가 잘못되었습니다.'
         : e.status === 429 ? 'Claude API 요청 한도에 걸렸습니다. 잠시 후 다시 시도하세요.'
-        : `Claude API 오류 (${e.status ?? '?'})`;
+        : `Claude API 오류 (${e.status ?? '?'}): ${e.message}`;
       return json({ error: msg }, 502);
     }
     console.error(e);

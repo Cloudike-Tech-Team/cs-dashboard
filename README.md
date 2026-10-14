@@ -151,6 +151,9 @@ npx supabase link --project-ref <프로젝트 ref>   # URL 의 https://<ref>.sup
 
 # 2. Claude API 키 등록 (Console → API Keys 에서 발급. Max 플랜이면 월 크레딧으로 결제됨)
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+#    키가 "워크스페이스에 묶이지 않은" 기본 키라면 워크스페이스 ID 도 함께 등록
+#    (Console → Settings → Workspaces 의 wrkspc_... 값). 워크스페이스 전용 키면 생략 가능.
+npx supabase secrets set ANTHROPIC_WORKSPACE_ID=wrkspc_...
 
 # 3. 함수 배포. JWT 검증은 함수 안에서 하므로 게이트웨이 검증은 끔
 npx supabase functions deploy ai --no-verify-jwt

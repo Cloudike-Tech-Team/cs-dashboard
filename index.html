@@ -51,6 +51,26 @@
 
       <div id="month-chips" class="chips" aria-label="최근 월별 건수"></div>
 
+      <div class="panels">
+        <details class="card panel" id="stats-panel" open>
+          <summary><h2>월 통계</h2></summary>
+          <div id="stats-body" class="stats"></div>
+        </details>
+        <details class="card panel" id="summary-panel" open>
+          <summary>
+            <h2>월간 요약</h2>
+            <span class="panel-actions">
+              <button id="summary-copy-btn" class="btn ghost small" type="button" hidden>복사</button>
+              <button id="summary-gen-btn" class="btn small" type="button">요약 생성</button>
+            </span>
+          </summary>
+          <p id="summary-meta" class="muted small"></p>
+          <p id="summary-error" class="error" hidden></p>
+          <div id="summary-content" class="md"></div>
+          <p id="summary-empty" class="muted">아직 생성된 요약이 없습니다. 「요약 생성」을 누르면 이 달의 CS를 읽고 보고서를 만듭니다.</p>
+        </details>
+      </div>
+
       <p id="summary" class="muted"></p>
       <p id="list-error" class="error" hidden></p>
 
@@ -81,6 +101,16 @@
         <h2 id="dialog-title">새 CS</h2>
         <button type="button" class="btn ghost" data-close aria-label="닫기">✕</button>
       </header>
+
+      <details id="paste-box" class="paste-box">
+        <summary>슬랙 메시지 붙여넣기로 자동 입력</summary>
+        <textarea id="paste-text" rows="5" maxlength="8000" placeholder="슬랙 메시지를 그대로 붙여넣으세요 (작성자·시각 줄 포함)"></textarea>
+        <div class="paste-actions">
+          <button type="button" id="paste-btn" class="btn small">분석해서 채우기</button>
+          <span id="paste-status" class="muted small"></span>
+        </div>
+        <p id="paste-notes" class="muted small" hidden></p>
+      </details>
 
       <div class="grid">
         <label>접수자 *<input name="reporter" maxlength="100" required></label>

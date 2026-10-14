@@ -99,3 +99,33 @@ group by 1;
 
 revoke all on public.cs_monthly_counts from anon;
 grant select on public.cs_monthly_counts to authenticated;
+
+-- ─────────────────────────────────────────────
+-- 5. 월간 요약 (Edge Function `ai` 의 summarize 모드가 upsert)
+-- ─────────────────────────────────────────────
+create table if not exists public.cs_monthly_summaries (
+  month        text primary key check (month ~ '^\d{4}-\d{2}$'),
+  content      text not null check (char_length(content) <= 20000),
+  ticket_count int  not null check (ticket_count >= 0),
+  generated_by uuid references auth.users(id) on delete set null,
+  generated_at timestamptz not null default now()
+);
+
+alter table public.cs_monthly_summaries enable row level security;
+
+revoke all on table public.cs_monthly_summaries from anon;
+grant select, insert, update, delete on table public.cs_monthly_summaries to authenticated;
+
+drop policy if exists "sum_select" on public.cs_monthly_summaries;
+drop policy if exists "sum_insert" on public.cs_monthly_summaries;
+drop policy if exists "sum_update" on public.cs_monthly_summaries;
+drop policy if exists "sum_delete" on public.cs_monthly_summaries;
+
+create policy "sum_select" on public.cs_monthly_summaries
+  for select to authenticated using (true);
+create policy "sum_insert" on public.cs_monthly_summaries
+  for insert to authenticated with check (true);
+create policy "sum_update" on public.cs_monthly_summaries
+  for update to authenticated using (true) with check (true);
+create policy "sum_delete" on public.cs_monthly_summaries
+  for delete to authenticated using (true);

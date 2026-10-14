@@ -9,7 +9,8 @@ cs-dashboard/
 ├── css/style.css
 ├── js/config.js          # Supabase URL, anon key  ← 여기만 채우면 됨
 ├── js/app.js             # 로직 (supabase-js v2, CDN 로드, 빌드 없음)
-├── supabase/schema.sql   # 테이블 + RLS + 월별 건수 뷰
+├── supabase/schema.sql   # 테이블 + RLS + 월별 건수 뷰 + 월간 요약 테이블
+├── supabase/functions/ai # Edge Function: 슬랙 메시지 자동 입력 · 월간 요약 (Claude API)
 └── .nojekyll
 ```
 
@@ -129,3 +130,43 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
     check (device in ('웹','CLDAstream Win','CLDAstream MAC','PC client Win','PC client MAC','Android','IOS','새기기'));
   ```
 - 회사 계정만 허용하려면 `schema.sql`의 정책 조건을 `(auth.jwt() ->> 'email') like '%@cloudike.io'`로 바꾸세요.
+
+## AI 기능 (슬랙 메시지 자동 입력 · 월간 요약)
+
+두 기능 모두 Supabase Edge Function `ai` 가 Claude API(`claude-sonnet-5-5`)를 호출합니다.
+API 키는 Supabase secrets 에만 저장되고, 함수는 로그인 JWT 를 검증한 뒤에만 동작합니다.
+
+- **새 CS 모달 → "슬랙 메시지 붙여넣기로 자동 입력"**: 메시지 한 건을 붙여넣고 「분석해서 채우기」를 누르면 접수자·고객사·날짜·기기·버전·현상·특이사항이 채워집니다. 확인 후 저장하세요. 추측한 항목은 "검토 필요" 문구로 표시됩니다.
+- **월 통계 패널**: 그 달의 기기별·고객사별·접수자별 건수. 브라우저에서 계산하며 API 호출이 없습니다.
+- **월간 요약 패널**: 「요약 생성」을 누르면 그 달 CS 전체를 읽어 보고서 형식 마크다운을 만들고 `cs_monthly_summaries` 에 저장합니다. 팀원 모두 같은 요약을 봅니다. 「복사」로 마크다운 원문을 가져갈 수 있습니다.
+
+프롬프트와 출력 형식은 `supabase/functions/ai/prompts.ts` 에 있습니다. 요약 섹션 구성이나 기기 매핑 규칙을 바꾸려면 이 파일만 고치고 다시 배포하면 됩니다.
+
+### 배포 (최초 1회)
+
+```bash
+# 1. CLI 로그인 + 프로젝트 연결 (Node 가 있으면 npx 로 바로 실행됨)
+npx supabase login
+npx supabase link --project-ref <프로젝트 ref>   # URL 의 https://<ref>.supabase.co
+
+# 2. Claude API 키 등록 (Console → API Keys 에서 발급. Max 플랜이면 월 크레딧으로 결제됨)
+npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. 함수 배포. JWT 검증은 함수 안에서 하므로 게이트웨이 검증은 끔
+npx supabase functions deploy ai --no-verify-jwt
+
+# 4. 테이블 생성: Dashboard → SQL Editor 에 supabase/schema.sql 전체를 다시 Run
+```
+
+프롬프트를 고친 뒤에는 3번만 다시 실행하면 됩니다.
+
+### 비용
+Sonnet 5.5 기준 붙여넣기 분석 1회 약 $0.006, 월간 요약 1회(100건) 약 $0.1. 월 100건 처리해도 $1 안팎입니다.
+함수 로그(Dashboard → Edge Functions → ai → Logs)에 호출마다 토큰 사용량이 남습니다.
+
+### 로컬 테스트
+```bash
+cd supabase/functions/ai
+npx deno-bin test --allow-net=jsr.io   # 순수 로직 단위 테스트
+npx deno-bin check index.ts            # 타입 검사
+```

@@ -25,6 +25,8 @@
     editing: null,             // 수정 중인 원본 row (신규면 null)
     busy: false,               // 저장/삭제 요청 진행 중 → 모달 닫기 차단
     loadSeq: 0,                // 빠른 월 이동 시 늦게 도착한 응답 무시용
+    summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
+    summaryBusy: false,        // 요약 생성 요청 진행 중
   };
   const PAGE = 1000;           // PostgREST 기본 max-rows
 
@@ -150,7 +152,9 @@
     }
     state.rowsMonth = month;
     renderTable();
+    renderStats();
     loadMonthChips();
+    loadSummary(seq);
   }
 
   // 한 달에 1000건이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
@@ -287,6 +291,7 @@
 
     $('dialog-title').textContent = row ? 'CS 수정' : '새 CS';
     $('delete-btn').hidden = !row;
+    resetPasteBox(!row);
     const f = form.elements;
     if (row) {
       f.reporter.value = row.reporter;
@@ -402,6 +407,177 @@
     toast('삭제했습니다.');
     loadMonth();
   });
+
+  // ───────────── AI (Edge Function `ai`) ─────────────
+  // 로그인 JWT 는 supabase-js 가 자동으로 붙임. 실패 시 함수가 돌려준 { error } 메시지를 그대로 사용.
+  async function callAi(body) {
+    const { data, error } = await sb.functions.invoke('ai', { body });
+    if (!error) return data;
+    let msg = error.message || '요청 실패';
+    if (error.context && typeof error.context.json === 'function') {
+      try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch { /* 본문 없음 */ }
+    } else if (/Failed to send|fetch/i.test(msg)) {
+      msg = 'AI 함수에 연결할 수 없습니다. Edge Function 이 배포되어 있는지 확인하세요.';
+    }
+    throw new Error(msg);
+  }
+
+  // ── 슬랙 메시지 붙여넣기 → 폼 채우기
+  function resetPasteBox(show) {
+    const box = $('paste-box');
+    box.hidden = !show;
+    box.open = false;
+    $('paste-text').value = '';
+    $('paste-status').textContent = '';
+    showError($('paste-notes'), '');
+    $('paste-btn').disabled = false;
+  }
+  // 모델이 준 received_at ('YYYY-MM-DDTHH:MM' | 'HH:MM' | null) → datetime-local 값. 날짜가 없으면 오늘(KST).
+  function parsedDateToInput(v) {
+    if (!v) return null;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(v)) return v;
+    if (/^\d{2}:\d{2}$/.test(v)) return `${toLocalInput(new Date().toISOString()).slice(0, 10)}T${v}`;
+    return null;
+  }
+  function applyParsed(p) {
+    const f = form.elements;
+    if (p.reporter) f.reporter.value = p.reporter;
+    if (p.customer) f.customer.value = p.customer;
+    const dt = parsedDateToInput(p.received_at);
+    if (dt) f.received_at.value = dt;
+    f.device.value = p.device && DEVICES.includes(p.device) ? p.device : '';
+    f.version.value = p.version || '';
+    f.description.value = p.description || '';
+    f.notes.value = p.notes || '';
+    const hints = [];
+    if (!p.received_at) hints.push('날짜: 메시지에 없어 현재 시각 유지');
+    else if (/^\d{2}:\d{2}$/.test(p.received_at)) hints.push('날짜: 메시지에 날짜가 없어 오늘로 설정');
+    if (!p.device) hints.push('기기: 판단 불가, 직접 선택 필요');
+    if (p.confidence_notes) hints.push(p.confidence_notes);
+    showError($('paste-notes'), hints.length ? '검토 필요 · ' + hints.join(' / ') : '');
+  }
+  $('paste-btn').addEventListener('click', async () => {
+    const text = $('paste-text').value.trim();
+    if (!text) { $('paste-status').textContent = '붙여넣은 내용이 없습니다.'; return; }
+    const btn = $('paste-btn');
+    btn.disabled = true;
+    $('paste-status').textContent = '분석 중… (몇 초 걸립니다)';
+    showError($('paste-notes'), '');
+    try {
+      const { parsed } = await callAi({ mode: 'parse', text });
+      applyParsed(parsed);
+      $('paste-status').textContent = '채웠습니다. 내용을 확인한 뒤 저장하세요.';
+      $('paste-box').open = false;
+      form.elements.description.focus();
+    } catch (e) {
+      $('paste-status').textContent = '';
+      showError($('paste-notes'), '분석 실패: ' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ── 월 통계 (state.rows 전체 기준, 검색 필터와 무관)
+  function countBy(rows, key) {
+    const m = new Map();
+    rows.forEach((r) => { const k = r[key] || '(없음)'; m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ko'));
+  }
+  function statGroup(title, pairs, limit) {
+    const rows = pairs.slice(0, limit).map(([k, n]) =>
+      el('div', { class: 'stat-row' }, el('span', { class: 'label', text: k }), el('b', { text: String(n) })));
+    if (pairs.length > limit) rows.push(el('div', { class: 'stat-row muted' }, el('span', { text: `외 ${pairs.length - limit}개` })));
+    return el('div', {}, el('h3', { text: title }), rows);
+  }
+  function renderStats() {
+    const rows = state.rows;
+    const body = $('stats-body');
+    if (!rows.length) { body.replaceChildren(el('p', { class: 'muted', text: '이 달에 접수된 CS가 없습니다.' })); return; }
+    body.replaceChildren(
+      el('div', { class: 'total', text: `총 ${rows.length}건` }),
+      statGroup('기기별', countBy(rows, 'device'), 8),
+      statGroup('고객사 상위', countBy(rows, 'customer'), 5),
+      statGroup('접수자별', countBy(rows, 'reporter'), 5),
+    );
+  }
+
+  // ── 월간 요약
+  async function loadSummary(seq) {
+    renderSummary(null, '불러오는 중…');
+    const { data, error } = await sb
+      .from('cs_monthly_summaries').select('*').eq('month', state.month).maybeSingle();
+    if (seq !== state.loadSeq) return;
+    if (error) { renderSummary(null, ''); showError($('summary-error'), '요약 불러오기 실패: ' + error.message); return; }
+    renderSummary(data, '');
+  }
+  function renderSummary(row, status) {
+    state.summary = row;
+    showError($('summary-error'), '');
+    $('summary-content').replaceChildren(...(row ? markdownNodes(row.content) : []));
+    $('summary-empty').hidden = !!row || !!status;
+    $('summary-copy-btn').hidden = !row;
+    $('summary-gen-btn').textContent = row ? '재생성' : '요약 생성';
+    $('summary-gen-btn').disabled = state.summaryBusy;
+    $('summary-meta').textContent = status || (row
+      ? `${row.ticket_count}건 기준 · 생성 ${fmtDateTime(row.generated_at)}`
+      : '');
+  }
+  $('summary-gen-btn').addEventListener('click', async () => {
+    if (state.summaryBusy) return;
+    if (state.loading || !state.rows.length) { toast('요약할 CS가 없습니다.'); return; }
+    const month = state.month;
+    const seq = state.loadSeq;
+    state.summaryBusy = true;
+    $('summary-gen-btn').disabled = true;
+    $('summary-meta').textContent = `${month} CS ${state.rows.length}건을 읽고 요약을 작성하는 중… (최대 1분)`;
+    showError($('summary-error'), '');
+    try {
+      const { summary } = await callAi({ mode: 'summarize', month });
+      state.summaryBusy = false;
+      if (seq !== state.loadSeq) return;     // 그 사이 월을 옮겼으면 화면에 반영하지 않음
+      renderSummary(summary, '');
+      toast('요약을 저장했습니다.');
+    } catch (e) {
+      state.summaryBusy = false;
+      if (seq !== state.loadSeq) return;
+      renderSummary(state.summary, '');
+      showError($('summary-error'), '요약 생성 실패: ' + e.message);
+    }
+  });
+  $('summary-copy-btn').addEventListener('click', async () => {
+    if (!state.summary) return;
+    try { await navigator.clipboard.writeText(state.summary.content); toast('마크다운을 복사했습니다.'); }
+    catch { toast('복사에 실패했습니다. 브라우저 권한을 확인하세요.'); }
+  });
+
+  // 요약 마크다운의 제한된 부분집합(##, ###, -, 1., **굵게**)만 DOM 으로 변환. innerHTML 미사용.
+  function inlineNodes(text) {
+    return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part) =>
+      part.startsWith('**') && part.endsWith('**') ? el('b', { text: part.slice(2, -2) }) : document.createTextNode(part));
+  }
+  function markdownNodes(md) {
+    const out = [];
+    let list = null;
+    const flush = () => { list = null; };
+    md.split('\n').forEach((raw) => {
+      const line = raw.trimEnd();
+      let m;
+      if (!line.trim()) { flush(); return; }
+      if ((m = line.match(/^###\s+(.*)/))) { flush(); out.push(el('h4', {}, inlineNodes(m[1]))); return; }
+      if ((m = line.match(/^##\s+(.*)/))) { flush(); out.push(el('h3', {}, inlineNodes(m[1]))); return; }
+      if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
+        if (!list || list.tagName !== 'UL') { list = el('ul'); out.push(list); }
+        list.append(el('li', {}, inlineNodes(m[1]))); return;
+      }
+      if ((m = line.match(/^\s*\d+\.\s+(.*)/))) {
+        if (!list || list.tagName !== 'OL') { list = el('ol'); out.push(list); }
+        list.append(el('li', {}, inlineNodes(m[1]))); return;
+      }
+      flush();
+      out.push(el('p', {}, inlineNodes(line)));
+    });
+    return out;
+  }
 
   // ───────────── CSV 내보내기 (해당 월 전체) ─────────────
   function csvCell(v) {

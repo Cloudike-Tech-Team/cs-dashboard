@@ -5,6 +5,7 @@
   const TZ = 'Asia/Seoul';       // 월 경계·표시·입력 모두 KST 기준으로 통일
   const TZ_OFFSET = '+09:00';    // KST 는 서머타임이 없어 고정 오프셋으로 충분
   const LS_REPORTER = 'cs.lastReporter';
+  const L = window.CSLib;
 
   const cfg = window.CS_CONFIG || {};
   const $ = (id) => document.getElementById(id);
@@ -23,10 +24,13 @@
     rowsMonth: null,           // state.rows 가 실제로 속한 월 (export 파일명용)
     loading: false,
     editing: null,             // 수정 중인 원본 row (신규면 null)
-    busy: false,               // 저장/삭제 요청 진행 중 → 모달 닫기 차단
+    busy: false,               // 저장/삭제/빠른 조작 요청 진행 중
     loadSeq: 0,                // 빠른 월 이동 시 늦게 도착한 응답 무시용
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
+    filter: null,              // null | { type: 'issue', value: index } | { type: 'device', value: device }
+    selected: null,            // 상세 패널에 열린 row id
+    quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
   };
   const PAGE = 1000;           // PostgREST 기본 max-rows
 
@@ -114,7 +118,9 @@
       loadMonth();
     } else {
       state.rows = [];
-      $('cs-tbody').replaceChildren();
+      state.selected = null;
+      state.filter = null;
+      $('cs-list').replaceChildren();
     }
   }
   $('login-form').addEventListener('submit', async (e) => {
@@ -132,12 +138,12 @@
   $('logout-btn').addEventListener('click', () => sb.auth.signOut());
 
   // ───────────── 조회 ─────────────
-  async function loadMonth() {
+  async function loadMonth(opts = {}) {
     const seq = ++state.loadSeq;
     const month = state.month;
-    $('month-input').value = month;
+    $('month-label').textContent = month;
     showError($('list-error'), '');
-    $('summary').textContent = '불러오는 중…';
+    $('list-title').textContent = '불러오는 중…';
     setLoading(true);
 
     const { data, error } = await fetchMonth(month);
@@ -151,10 +157,18 @@
       state.rows = data;
     }
     state.rowsMonth = month;
-    renderTable();
-    renderStats();
-    loadMonthChips();
+    state.filter = null;
+    state.quick = null;
+    state.selected = opts.selected && state.rows.some((r) => r.id === opts.selected) ? opts.selected : null;
+    renderAll();
     loadSummary(seq);
+  }
+
+  function renderAll() {
+    renderKpi();
+    renderSidebar();
+    renderList();
+    renderDetail();
   }
 
   // 한 달에 1000건이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
@@ -182,78 +196,158 @@
     $('export-btn').disabled = on;
   }
 
-  async function loadMonthChips() {
-    const { data, error } = await sb
-      .from('cs_monthly_counts')
-      .select('month,count')
-      .order('month', { ascending: false })
-      .limit(12);
-    const box = $('month-chips');
-    if (error) { box.replaceChildren(); return; }
-    box.replaceChildren(...data.map((r) => {
-      const b = el('button', { type: 'button', class: 'chip' + (r.month === state.month ? ' active' : '') },
-        `${r.month} `, el('b', { text: String(r.count) }));
-      b.addEventListener('click', () => { state.month = r.month; loadMonth(); });
-      return b;
-    }));
-  }
-
   function filteredRows() {
-    const q = $('search-input').value.trim().toLowerCase();
-    const dev = $('device-filter').value;
-    return state.rows.filter((r) => {
-      if (dev && r.device !== dev) return false;
-      if (!q) return true;
-      return [r.reporter, r.customer, r.version, r.description, r.notes, ...r.timeline, ...r.tickets]
-        .some((v) => (v || '').toLowerCase().includes(q));
-    });
+    const q = $('search-input').value;
+    const issues = state.summary ? state.summary.issues || [] : [];
+    return L.applyFilter(state.rows, state.filter, issues).filter((r) => L.matchesSearch(r, q));
   }
 
-  function ticketNode(t) {
-    return isSafeUrl(t)
-      ? el('a', { href: t, target: '_blank', rel: 'noopener noreferrer', text: shortTicket(t) })
-      : el('span', { text: t });
-  }
+  function deviceLine(r) { return r.version ? `${r.device} · v${r.version}` : r.device; }
+
   function shortTicket(t) {
     try { const u = new URL(t); return u.pathname.split('/').filter(Boolean).pop() || u.host; }
     catch { return t; }
   }
-
-  function renderTable() {
-    const rows = filteredRows();
-    const tbody = $('cs-tbody');
-    tbody.replaceChildren(...rows.map((r) => {
-      const tr = el('tr', { tabindex: '0' },
-        el('td', { class: 'nowrap', text: fmtDateTime(r.received_at) }),
-        el('td', { text: r.customer }),
-        el('td', { class: 'nowrap' }, el('span', { class: 'tag', text: r.device })),
-        el('td', { text: r.version }),
-        el('td', { class: 'desc-cell' }, el('div', { class: 'desc', text: r.description })),
-        el('td', { class: 'nowrap', text: r.reporter }),
-        el('td', {}, el('div', { class: 'tickets' }, r.tickets.map(ticketNode))),
-      );
-      tr.addEventListener('click', (e) => { if (!e.target.closest('a')) openDialog(r); });
-      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === tr) openDialog(r); });
-      return tr;
-    }));
-    const total = state.rows.length;
-    $('summary').textContent = rows.length === total
-      ? `${state.month} · 총 ${total}건`
-      : `${state.month} · ${rows.length}건 표시 (전체 ${total}건)`;
-    $('empty').hidden = rows.length > 0 || !!$('list-error').textContent;
-    if (total > 0 && rows.length === 0) $('empty').textContent = '검색 조건에 맞는 CS가 없습니다.';
-    else $('empty').textContent = '이 달에 접수된 CS가 없습니다.';
+  // 목록용(버튼 안이라 링크 불가) / 상세용(링크)
+  function ticketChip(t) { return el('span', { class: 'chip', text: shortTicket(t) }); }
+  function ticketNode(t) {
+    return isSafeUrl(t)
+      ? el('a', { class: 'chip', href: t, target: '_blank', rel: 'noopener noreferrer', text: shortTicket(t) })
+      : el('span', { class: 'chip', text: t });
   }
+
+  function filterName() {
+    const f = state.filter;
+    if (!f) return '';
+    if (f.type === 'device') return f.value;
+    const issue = (state.summary && state.summary.issues || [])[f.value];
+    return issue ? issue.label : '';
+  }
+
+  function rowNode(r) {
+    const p = kstParts(new Date(r.received_at));
+    const b = el('button', { type: 'button', class: 'cs-row' + (state.selected === r.id ? ' active' : '') },
+      el('span', { class: 'col-when mono' },
+        el('b', { text: `${p.month}-${p.day} ${WEEKDAY_KO[p.weekday] || p.weekday}` }),
+        el('span', { class: 'muted', text: `${p.hour}:${p.minute}` })),
+      el('span', { class: 'col-who' },
+        el('b', { class: 'mono', text: r.customer }),
+        el('span', { class: 'muted small', text: deviceLine(r) })),
+      el('span', { class: 'col-what' },
+        el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
+        r.description ? el('span', { class: 'row-desc', text: r.description }) : null,
+        r.tickets.length ? el('span', { class: 'ticket-chips' }, r.tickets.map(ticketChip)) : null),
+      el('span', { class: 'col-status' }, el('span', { class: 'dot' }), el('span', { text: L.statusLabel(r) })),
+    );
+    b.style.setProperty('--c', L.statusColor(r));
+    b.addEventListener('click', () => selectRow(r.id));
+    return b;
+  }
+
+  function renderList() {
+    const rows = filteredRows();
+    $('cs-list').replaceChildren(...rows.map(rowNode));
+    const total = state.rows.length;
+    const name = filterName();
+    $('list-title').textContent = state.filter
+      ? `${name} · ${rows.length}건 / 전체 ${total}건`
+      : (rows.length === total ? `${state.month} 접수 · ${total}건` : `${state.month} 검색 · ${rows.length}건 / 전체 ${total}건`);
+    const err = !!$('list-error').textContent;
+    $('empty').hidden = rows.length > 0 || err;
+    $('empty').textContent = total > 0 ? '해당 조건의 접수 건이 없습니다.' : '이 달에 접수된 CS가 없습니다.';
+  }
+
+  function selectRow(id) {
+    state.selected = state.selected === id ? null : id;
+    state.quick = null;
+    renderList();
+    renderDetail();
+  }
+
+  function renderDetail() { /* Task 8 */ }
+
+  // ───────────── KPI · 사이드바 ─────────────
+  function renderKpi() {
+    const k = L.kpi(state.rows);
+    $('kpi-total').textContent = String(k.total);
+    $('kpi-open').textContent = String(k.open);
+    $('kpi-done').textContent = String(k.done);
+    $('kpi-ticketed').textContent = String(k.ticketed);
+  }
+
+  function isActive(type, value) { return !!state.filter && state.filter.type === type && state.filter.value === value; }
+  function toggleFilter(type, value) {
+    state.filter = isActive(type, value) ? null : { type, value };
+    renderSidebar();
+    renderList();
+  }
+
+  function countBy(rows, key) {
+    const m = new Map();
+    rows.forEach((r) => { const k = r[key] || '(없음)'; m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ko'));
+  }
+
+  function fmtShort(iso) {
+    const p = kstParts(new Date(iso));
+    return `${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  }
+
+  function renderSidebar() {
+    const s = state.summary;
+    // 헤더
+    $('summary-meta').textContent = state.summaryBusy ? '생성 중… (최대 1분)' : s ? `생성 ${fmtShort(s.generated_at)} · ${s.ticket_count}건 기준` : '아직 생성된 요약이 없습니다';
+    $('summary-copy-btn').hidden = !s;
+    $('summary-gen-btn').textContent = s ? '재생성' : '생성';
+    $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
+    $('filter-clear').hidden = !state.filter;
+
+    // 주요 이슈
+    const issueBox = $('issue-list');
+    const issues = L.issueCounts(s ? s.issues || [] : [], state.rows);
+    if (!s) issueBox.replaceChildren(el('p', { class: 'side-empty', text: '요약을 생성하면 주요 이슈가 표시됩니다.' }));
+    else if (!issues.length) issueBox.replaceChildren(el('p', { class: 'side-empty', text: '이전 형식의 요약입니다. 재생성하면 주요 이슈가 표시됩니다.' }));
+    else issueBox.replaceChildren(...issues.map((is, i) => {
+      const b = el('button', { type: 'button', class: 'issue-btn' + (isActive('issue', i) ? ' active' : '') },
+        el('span', { class: 'issue-head' }, el('span', { class: 'swatch' }), el('span', { class: 'issue-label', text: is.label })),
+        el('b', { text: String(is.count) }),
+        is.detail ? el('span', { class: 'issue-detail', text: is.detail }) : null);
+      b.style.setProperty('--c', L.ISSUE_COLORS[i % L.ISSUE_COLORS.length]);
+      b.disabled = is.count === 0;
+      b.addEventListener('click', () => toggleFilter('issue', i));
+      return b;
+    }));
+
+    // 기기별
+    const devBox = $('device-list');
+    const counts = countBy(state.rows, 'device');
+    const max = counts.length ? counts[0][1] : 0;
+    if (!counts.length) devBox.replaceChildren(el('p', { class: 'side-empty', text: '이 달에 접수된 CS가 없습니다.' }));
+    else devBox.replaceChildren(...counts.map(([d, n]) => {
+      const fill = el('span');
+      fill.style.width = `${Math.round((n / max) * 100)}%`;
+      const b = el('button', { type: 'button', class: 'device-btn' + (isActive('device', d) ? ' active' : '') },
+        el('span', { class: 'lbl', text: d }),
+        el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
+        el('b', { text: String(n) }));
+      b.addEventListener('click', () => toggleFilter('device', d));
+      return b;
+    }));
+
+    // 특이사항
+    const notesBox = $('notes-list');
+    const notes = s ? s.notes || [] : [];
+    notesBox.replaceChildren(...(notes.length
+      ? notes.map((n) => el('p', {}, n.customer ? el('span', { class: 'cust', text: n.customer }) : null, n.text))
+      : [el('p', { class: 'muted', text: s ? '없음' : '—' })]));
+  }
+  $('filter-clear').addEventListener('click', () => { state.filter = null; renderSidebar(); renderList(); });
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => { state.month = shiftMonth(state.month, -1); loadMonth(); });
   $('next-month').addEventListener('click', () => { state.month = shiftMonth(state.month, 1); loadMonth(); });
   $('this-month').addEventListener('click', () => { state.month = currentMonthKST(); loadMonth(); });
-  $('month-input').addEventListener('change', (e) => {
-    if (/^\d{4}-\d{2}$/.test(e.target.value)) { state.month = e.target.value; loadMonth(); }
-  });
-  $('search-input').addEventListener('input', renderTable);
-  $('device-filter').addEventListener('change', renderTable);
+  $('search-input').addEventListener('input', renderList);
   $('export-btn').addEventListener('click', exportCsv);
   $('new-btn').addEventListener('click', () => openDialog(null));
 
@@ -477,50 +571,17 @@
     }
   });
 
-  // ── 월 통계 (state.rows 전체 기준, 검색 필터와 무관)
-  function countBy(rows, key) {
-    const m = new Map();
-    rows.forEach((r) => { const k = r[key] || '(없음)'; m.set(k, (m.get(k) || 0) + 1); });
-    return [...m.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ko'));
-  }
-  function statGroup(title, pairs, limit) {
-    const rows = pairs.slice(0, limit).map(([k, n]) =>
-      el('div', { class: 'stat-row' }, el('span', { class: 'label', text: k }), el('b', { text: String(n) })));
-    if (pairs.length > limit) rows.push(el('div', { class: 'stat-row muted' }, el('span', { text: `외 ${pairs.length - limit}개` })));
-    return el('div', {}, el('h3', { text: title }), rows);
-  }
-  function renderStats() {
-    const rows = state.rows;
-    const body = $('stats-body');
-    if (!rows.length) { body.replaceChildren(el('p', { class: 'muted', text: '이 달에 접수된 CS가 없습니다.' })); return; }
-    body.replaceChildren(
-      el('div', { class: 'total', text: `총 ${rows.length}건` }),
-      statGroup('기기별', countBy(rows, 'device'), 8),
-      statGroup('고객사 상위', countBy(rows, 'customer'), 5),
-      statGroup('접수자별', countBy(rows, 'reporter'), 5),
-    );
-  }
-
   // ── 월간 요약
   async function loadSummary(seq) {
-    renderSummary(null, '불러오는 중…');
+    state.summary = null;
+    renderSidebar();
     const { data, error } = await sb
       .from('cs_monthly_summaries').select('*').eq('month', state.month).maybeSingle();
     if (seq !== state.loadSeq) return;
-    if (error) { renderSummary(null, ''); showError($('summary-error'), '요약 불러오기 실패: ' + error.message); return; }
-    renderSummary(data, '');
-  }
-  function renderSummary(row, status) {
-    state.summary = row;
+    if (error) { showError($('summary-error'), '요약 불러오기 실패: ' + error.message); return; }
     showError($('summary-error'), '');
-    $('summary-content').replaceChildren(...(row ? markdownNodes(row.content) : []));
-    $('summary-empty').hidden = !!row || !!status;
-    $('summary-copy-btn').hidden = !row;
-    $('summary-gen-btn').textContent = row ? '재생성' : '요약 생성';
-    $('summary-gen-btn').disabled = state.summaryBusy;
-    $('summary-meta').textContent = status || (row
-      ? `${row.ticket_count}건 기준 · 생성 ${fmtDateTime(row.generated_at)}`
-      : '');
+    state.summary = data;
+    renderSidebar();
   }
   $('summary-gen-btn').addEventListener('click', async () => {
     if (state.summaryBusy) return;
@@ -528,19 +589,21 @@
     const month = state.month;
     const seq = state.loadSeq;
     state.summaryBusy = true;
-    $('summary-gen-btn').disabled = true;
-    $('summary-meta').textContent = `${month} CS ${state.rows.length}건을 읽고 요약을 작성하는 중… (최대 1분)`;
     showError($('summary-error'), '');
+    renderSidebar();
     try {
       const { summary } = await callAi({ mode: 'summarize', month });
       state.summaryBusy = false;
       if (seq !== state.loadSeq) return;     // 그 사이 월을 옮겼으면 화면에 반영하지 않음
-      renderSummary(summary, '');
+      state.summary = summary;
+      if (state.filter && state.filter.type === 'issue') state.filter = null;   // 이슈 번호가 바뀌므로
+      renderSidebar();
+      renderList();
       toast('요약을 저장했습니다.');
     } catch (e) {
       state.summaryBusy = false;
       if (seq !== state.loadSeq) return;
-      renderSummary(state.summary, '');
+      renderSidebar();
       showError($('summary-error'), '요약 생성 실패: ' + e.message);
     }
   });
@@ -549,35 +612,6 @@
     try { await navigator.clipboard.writeText(state.summary.content); toast('마크다운을 복사했습니다.'); }
     catch { toast('복사에 실패했습니다. 브라우저 권한을 확인하세요.'); }
   });
-
-  // 요약 마크다운의 제한된 부분집합(##, ###, -, 1., **굵게**)만 DOM 으로 변환. innerHTML 미사용.
-  function inlineNodes(text) {
-    return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part) =>
-      part.startsWith('**') && part.endsWith('**') ? el('b', { text: part.slice(2, -2) }) : document.createTextNode(part));
-  }
-  function markdownNodes(md) {
-    const out = [];
-    let list = null;
-    const flush = () => { list = null; };
-    md.split('\n').forEach((raw) => {
-      const line = raw.trimEnd();
-      let m;
-      if (!line.trim()) { flush(); return; }
-      if ((m = line.match(/^###\s+(.*)/))) { flush(); out.push(el('h4', {}, inlineNodes(m[1]))); return; }
-      if ((m = line.match(/^##\s+(.*)/))) { flush(); out.push(el('h3', {}, inlineNodes(m[1]))); return; }
-      if ((m = line.match(/^\s*[-*]\s+(.*)/))) {
-        if (!list || list.tagName !== 'UL') { list = el('ul'); out.push(list); }
-        list.append(el('li', {}, inlineNodes(m[1]))); return;
-      }
-      if ((m = line.match(/^\s*\d+\.\s+(.*)/))) {
-        if (!list || list.tagName !== 'OL') { list = el('ol'); out.push(list); }
-        list.append(el('li', {}, inlineNodes(m[1]))); return;
-      }
-      flush();
-      out.push(el('p', {}, inlineNodes(line)));
-    });
-    return out;
-  }
 
   // ───────────── CSV 내보내기 (해당 월 전체) ─────────────
   function csvCell(v) {
@@ -607,9 +641,8 @@
   // ───────────── 초기화 ─────────────
   const devSelect = form.elements.device;
   devSelect.append(el('option', { value: '', text: '선택하세요' }));
-  DEVICES.forEach((d) => {
-    devSelect.append(el('option', { value: d, text: d }));
-    $('device-filter').append(el('option', { value: d, text: d }));
-  });
+  DEVICES.forEach((d) => devSelect.append(el('option', { value: d, text: d })));
+  const statusSelect = form.elements.status;
+  Object.entries(L.STATUS).forEach(([k, v]) => statusSelect.append(el('option', { value: k, text: v.label })));
   initAuth();
 })();

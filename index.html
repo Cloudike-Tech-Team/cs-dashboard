@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CS 대시보드</title>
+  <title>CS 콘솔</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <!-- 로그인 -->
   <section id="login-view" class="login" hidden>
-    <form id="login-form" class="card login-card">
-      <h1>CS 대시보드</h1>
+    <form id="login-form" class="login-card">
+      <h1>CS 콘솔</h1>
       <p class="muted">팀 계정으로 로그인하세요.</p>
       <label>이메일<input id="login-email" type="email" autocomplete="username" required></label>
       <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" required></label>
@@ -20,78 +22,126 @@
   </section>
 
   <!-- 메인 -->
-  <section id="app-view" hidden>
+  <section id="app-view" class="app" hidden>
     <header class="topbar">
-      <h1>CS 대시보드</h1>
+      <div class="topbar-left">
+        <strong class="brand">CS 콘솔</strong>
+        <span class="vsep"></span>
+        <nav class="tabs"><a href="#" class="tab active">접수 현황</a></nav>
+      </div>
       <div class="topbar-right">
-        <span id="user-email" class="muted"></span>
-        <button id="logout-btn" class="btn ghost" type="button">로그아웃</button>
+        <span id="user-email" class="mono muted"></span>
+        <button id="logout-btn" class="btn small" type="button">로그아웃</button>
       </div>
     </header>
 
-    <main class="container">
-      <div class="toolbar">
-        <div class="month-nav">
-          <button id="prev-month" class="btn ghost" type="button" aria-label="이전 달">◀</button>
-          <input id="month-input" type="month" aria-label="조회 월">
-          <button id="next-month" class="btn ghost" type="button" aria-label="다음 달">▶</button>
-          <button id="this-month" class="btn ghost" type="button">이번 달</button>
-        </div>
-        <div class="filters">
-          <input id="search-input" type="search" placeholder="고객사·현상·티켓 검색">
-          <select id="device-filter" aria-label="기기 필터">
-            <option value="">전체 기기</option>
-          </select>
-        </div>
-        <div class="actions">
-          <button id="export-btn" class="btn" type="button">CSV 내보내기</button>
-          <button id="new-btn" class="btn primary" type="button">+ 새 CS</button>
-        </div>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <button id="prev-month" class="btn icon" type="button" aria-label="이전 달">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <span id="month-label" class="month-label mono"></span>
+        <button id="next-month" class="btn icon" type="button" aria-label="다음 달">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <button id="this-month" class="btn" type="button">이번 달</button>
+        <span class="vsep"></span>
+        <label class="search">
+          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓">
+        </label>
       </div>
-
-      <div id="month-chips" class="chips" aria-label="최근 월별 건수"></div>
-
-      <div class="panels">
-        <details class="card panel" id="stats-panel" open>
-          <summary><h2>월 통계</h2></summary>
-          <div id="stats-body" class="stats"></div>
-        </details>
-        <details class="card panel" id="summary-panel" open>
-          <summary>
-            <h2>월간 요약</h2>
-            <span class="panel-actions">
-              <button id="summary-copy-btn" class="btn ghost small" type="button" hidden>복사</button>
-              <button id="summary-gen-btn" class="btn small" type="button">요약 생성</button>
-            </span>
-          </summary>
-          <p id="summary-meta" class="muted small"></p>
-          <p id="summary-error" class="error" hidden></p>
-          <div id="summary-content" class="md"></div>
-          <p id="summary-empty" class="muted">아직 생성된 요약이 없습니다. 「요약 생성」을 누르면 이 달의 CS를 읽고 보고서를 만듭니다.</p>
-        </details>
+      <div class="toolbar-right">
+        <button id="export-btn" class="btn" type="button">CSV 내보내기</button>
+        <button id="new-btn" class="btn primary" type="button">+ 새 CS</button>
       </div>
+    </div>
 
-      <p id="summary" class="muted"></p>
-      <p id="list-error" class="error" hidden></p>
+    <div class="kpis">
+      <div class="kpi"><span class="kpi-label">접수</span><span id="kpi-total" class="kpi-value mono">0</span></div>
+      <div class="kpi"><span class="kpi-label">대기 · 미해결</span><span id="kpi-open" class="kpi-value mono c-open">0</span></div>
+      <div class="kpi"><span class="kpi-label">완료</span><span id="kpi-done" class="kpi-value mono c-done">0</span></div>
+      <div class="kpi"><span class="kpi-label">연결 티켓</span><span id="kpi-ticketed" class="kpi-value mono">0</span></div>
+    </div>
 
-      <div class="table-wrap">
-        <table class="cs-table">
-          <thead>
-            <tr>
-              <th>접수 일시</th>
-              <th>고객사 / 유저</th>
-              <th>기기</th>
-              <th>버전</th>
-              <th>현상설명</th>
-              <th>접수자</th>
-              <th>티켓</th>
-            </tr>
-          </thead>
-          <tbody id="cs-tbody"></tbody>
-        </table>
-      </div>
-      <p id="empty" class="empty" hidden>이 달에 접수된 CS가 없습니다.</p>
-    </main>
+    <div class="body">
+      <!-- 요약 · 필터 -->
+      <aside class="side" aria-label="월간 요약">
+        <div class="panel-head">
+          <div class="panel-head-text">
+            <strong>월간 요약</strong>
+            <span id="summary-meta" class="mono muted small"></span>
+          </div>
+          <div class="panel-head-actions">
+            <button id="summary-copy-btn" class="btn xs" type="button" hidden>복사</button>
+            <button id="summary-gen-btn" class="btn xs" type="button">생성</button>
+          </div>
+        </div>
+        <p id="summary-error" class="error side-pad" hidden></p>
+
+        <div class="side-title">
+          <h3>주요 이슈 · 눌러서 필터</h3>
+          <button id="filter-clear" class="link-btn" type="button" hidden>필터 해제 ×</button>
+        </div>
+        <div id="issue-list" class="issue-list"></div>
+
+        <div class="side-title"><h3>기기별 · 눌러서 필터</h3></div>
+        <div id="device-list" class="device-list"></div>
+
+        <div class="side-title bordered"><h3>특이사항</h3></div>
+        <div id="notes-list" class="notes-list"></div>
+      </aside>
+
+      <!-- 목록 -->
+      <section class="list" aria-label="CS 목록">
+        <div class="panel-head">
+          <strong id="list-title"></strong>
+          <span class="muted small">행을 누르면 상세가 열립니다</span>
+        </div>
+        <p id="list-error" class="error side-pad" hidden></p>
+        <div class="list-head"><span>접수</span><span>고객사</span><span>현상</span><span>상태</span></div>
+        <div id="cs-list" class="cs-list"></div>
+        <p id="empty" class="empty" hidden></p>
+      </section>
+
+      <!-- 상세 -->
+      <aside id="detail" class="detail" aria-label="CS 상세" hidden>
+        <div class="panel-head">
+          <span id="detail-when" class="mono muted small"></span>
+          <button id="detail-close" class="btn icon xs" type="button" aria-label="상세 닫기">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="detail-body">
+          <div>
+            <span id="detail-status" class="status-pill"></span>
+            <h2 id="detail-title" class="detail-title"></h2>
+          </div>
+          <dl class="meta">
+            <dt>고객사</dt><dd id="detail-customer" class="mono bold"></dd>
+            <dt>기기</dt><dd id="detail-device"></dd>
+            <dt>접수</dt><dd id="detail-received" class="mono"></dd>
+            <dt>접수자</dt><dd id="detail-reporter"></dd>
+            <dt>티켓</dt><dd id="detail-tickets" class="ticket-chips"></dd>
+          </dl>
+          <div class="detail-section">
+            <h3>현상 설명</h3>
+            <p id="detail-desc" class="detail-desc"></p>
+          </div>
+          <div class="detail-section">
+            <h3>처리 이력</h3>
+            <ol id="detail-history" class="history"></ol>
+          </div>
+          <p id="detail-error" class="error" hidden></p>
+          <div id="quick-box"></div>
+          <div class="detail-actions">
+            <button id="status-btn" class="btn" type="button">상태 변경</button>
+            <button id="history-btn" class="btn" type="button">이력 추가</button>
+            <button id="edit-btn" class="btn" type="button">수정</button>
+          </div>
+        </div>
+      </aside>
+    </div>
   </section>
 
   <!-- 등록/수정 모달 -->
@@ -99,7 +149,7 @@
     <form id="cs-form" class="cs-form" novalidate>
       <header class="dialog-head">
         <h2 id="dialog-title">새 CS</h2>
-        <button type="button" class="btn ghost" data-close aria-label="닫기">✕</button>
+        <button type="button" class="btn icon xs" data-close aria-label="닫기">✕</button>
       </header>
 
       <details id="paste-box" class="paste-box">
@@ -118,21 +168,24 @@
         <label>날짜 *<input name="received_at" type="datetime-local" required></label>
         <label>기기 *<select name="device" required></select></label>
         <label>버전<input name="version" maxlength="100"></label>
+        <label>상태<select name="status"></select></label>
+        <label>상태 메모<input name="status_note" maxlength="50" placeholder="예) 로그 대기"></label>
       </div>
 
+      <label>제목 *<input name="title" maxlength="200" required placeholder="현상을 한 줄로"></label>
       <label>현상설명<textarea name="description" rows="3" maxlength="10000"></textarea></label>
       <label>특이사항<textarea name="notes" rows="2" maxlength="10000"></textarea></label>
 
       <fieldset class="list-field">
         <legend>처리 타임라인</legend>
         <div class="list-items" data-list="timeline"></div>
-        <button type="button" class="btn ghost small" data-add="timeline">+ 항목 추가</button>
+        <button type="button" class="btn small" data-add="timeline">+ 항목 추가</button>
       </fieldset>
 
       <fieldset class="list-field">
         <legend>티켓</legend>
         <div class="list-items" data-list="tickets"></div>
-        <button type="button" class="btn ghost small" data-add="tickets">+ 티켓 추가</button>
+        <button type="button" class="btn small" data-add="tickets">+ 티켓 추가</button>
       </fieldset>
 
       <p id="form-meta" class="muted small"></p>
@@ -140,15 +193,15 @@
 
       <footer class="dialog-foot">
         <div class="delete-zone">
-          <button type="button" id="delete-btn" class="btn danger ghost" hidden>삭제</button>
+          <button type="button" id="delete-btn" class="btn danger" hidden>삭제</button>
           <span id="delete-confirm" hidden>
             정말 삭제할까요?
             <button type="button" id="delete-yes" class="btn danger small">삭제</button>
-            <button type="button" id="delete-no" class="btn ghost small">취소</button>
+            <button type="button" id="delete-no" class="btn small">취소</button>
           </span>
         </div>
         <div>
-          <button type="button" class="btn ghost" data-close>취소</button>
+          <button type="button" class="btn" data-close>취소</button>
           <button type="submit" id="save-btn" class="btn primary">저장</button>
         </div>
       </footer>
@@ -159,6 +212,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/lib.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

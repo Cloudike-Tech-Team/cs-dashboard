@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>CS 콘솔 — 2026년 10월</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF}
+a{color:#1D4ED8}a:hover{color:#1E3A8A}
+</style>
+</helmet>
+<div style="min-height: 100vh; box-sizing: border-box; background: #FFFFFF; color: #111318; font-family: 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column">
+
+  <!-- 상단 바 -->
+  <header style="border-bottom: 1px solid #D9DBE0; background: #F7F7F8; padding: 0 24px; height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 14px">
+      <strong style="font-size: 13px; font-weight: 700; letter-spacing: 0.02em">CS 콘솔</strong>
+      <span style="width: 1px; height: 16px; background: #D9DBE0"></span>
+      <nav style="display: flex; gap: 2px">
+        <a href="#" style="font-size: 12px; font-weight: 600; padding: 4px 10px; color: #111318; text-decoration: none; border-bottom: 2px solid #111318">접수 현황</a>
+        <a href="#" style="font-size: 12px; font-weight: 500; padding: 4px 10px; color: #6B7280; text-decoration: none; border-bottom: 2px solid transparent">고객사</a>
+        <a href="#" style="font-size: 12px; font-weight: 500; padding: 4px 10px; color: #6B7280; text-decoration: none; border-bottom: 2px solid transparent">티켓</a>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #6B7280">
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace">leedh0209@cloudike.io</span>
+      <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 28px; padding: 0 10px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">로그아웃</button>
+    </div>
+  </header>
+
+  <!-- 툴바 -->
+  <div style="border-bottom: 1px solid #D9DBE0; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap">
+      <button type="button" aria-label="이전 달" style="width: 32px; height: 32px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111318" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"></path></svg>
+      </button>
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 15px; font-weight: 600; padding: 0 8px; letter-spacing: -0.01em">2026-10</span>
+      <button type="button" aria-label="다음 달" style="width: 32px; height: 32px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111318" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg>
+      </button>
+      <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 32px; padding: 0 10px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">이번 달</button>
+      <span style="width: 1px; height: 20px; background: #D9DBE0; margin: 0 4px"></span>
+      <label style="position: relative; display: flex; align-items: center">
+        <span style="position: absolute; left: 9px; display: flex">
+          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        </span>
+        <input type="search" placeholder="고객사 · 현상 · 티켓" style="font: inherit; font-size: 12px; height: 32px; width: 220px; box-sizing: border-box; padding: 0 10px 0 28px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318">
+      </label>
+    </div>
+    <div style="display: flex; align-items: center; gap: 6px">
+      <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 32px; padding: 0 10px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">CSV 내보내기</button>
+      <button type="button" style="font: inherit; font-size: 12px; font-weight: 600; height: 32px; padding: 0 12px; border: 1px solid #111318; border-radius: 2px; background: #111318; color: #FFFFFF; cursor: pointer">+ 새 CS</button>
+    </div>
+  </div>
+
+  <!-- 수치 스트립 -->
+  <div style="border-bottom: 1px solid #D9DBE0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); background: #D9DBE0; gap: 1px">
+    <div style="background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 11px; font-weight: 500; color: #6B7280; letter-spacing: 0.04em">접수</span>
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 26px; font-weight: 600; line-height: 1">6</span>
+    </div>
+    <div style="background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 11px; font-weight: 500; color: #6B7280; letter-spacing: 0.04em">대기 · 미해결</span>
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 26px; font-weight: 600; line-height: 1; color: #B45309">5</span>
+    </div>
+    <div style="background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 11px; font-weight: 500; color: #6B7280; letter-spacing: 0.04em">완료</span>
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 26px; font-weight: 600; line-height: 1; color: #15803D">1</span>
+    </div>
+    <div style="background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 11px; font-weight: 500; color: #6B7280; letter-spacing: 0.04em">연결 티켓</span>
+      <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 26px; font-weight: 600; line-height: 1">4</span>
+    </div>
+  </div>
+
+  <!-- 본문 3열: 요약(필터) | 목록 | 상세 -->
+  <div style="display: flex; flex-wrap: wrap; align-items: stretch; flex: 1">
+
+    <!-- 요약 · 필터 -->
+    <aside aria-label="월간 요약" style="flex: 0 1 300px; min-width: 0; border-right: 1px solid #D9DBE0; display: flex; flex-direction: column">
+      <div style="padding: 12px 20px; border-bottom: 1px solid #D9DBE0; display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #F7F7F8">
+        <div style="display: flex; flex-direction: column">
+          <strong style="font-size: 12px; font-weight: 700">월간 요약</strong>
+          <span style="font-size: 11px; color: #6B7280; font-family: 'IBM Plex Mono', ui-monospace, monospace">생성 10-14 15:11</span>
+        </div>
+        <div style="display: flex; gap: 4px">
+          <button type="button" style="font: inherit; font-size: 11px; font-weight: 500; height: 26px; padding: 0 8px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">복사</button>
+          <button type="button" style="font: inherit; font-size: 11px; font-weight: 500; height: 26px; padding: 0 8px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">재생성</button>
+        </div>
+      </div>
+
+      <div style="padding: 14px 20px 6px; display: flex; align-items: baseline; justify-content: space-between">
+        <h3 style="margin: 0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">주요 이슈 · 눌러서 필터</h3>
+        <sc-if value="{{ hasFilter }}" hint-placeholder-val="{{ false }}">
+          <button type="button" onClick="{{ clearFilter }}" style="font: inherit; font-size: 11px; font-weight: 500; padding: 2px 6px; border: 0; background: transparent; color: #1D4ED8; cursor: pointer">필터 해제 ×</button>
+        </sc-if>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{ issues }}" as="issue" hint-placeholder-count="4">
+          <button type="button" onClick="{{ issue.pick }}" style="{{ issue.style }}">
+            <span style="display: flex; align-items: center; gap: 8px; min-width: 0">
+              <span style="width: 8px; height: 8px; flex: none; background: {{ issue.color }}"></span>
+              <span style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ issue.label }}</span>
+            </span>
+            <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 13px; font-weight: 600">{{ issue.count }}</span>
+            <span style="grid-column: 1 / -1; font-size: 12px; color: #4B5563; line-height: 1.4; text-align: left">{{ issue.detail }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="padding: 16px 20px 6px">
+        <h3 style="margin: 0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">기기별 · 눌러서 필터</h3>
+      </div>
+      <div style="display: flex; flex-direction: column; padding: 0 12px 8px">
+        <sc-for list="{{ devices }}" as="dev" hint-placeholder-count="4">
+          <button type="button" onClick="{{ dev.pick }}" style="{{ dev.style }}">
+            <span style="font-size: 12px; white-space: nowrap">{{ dev.label }}</span>
+            <span style="height: 6px; background: #E5E7EB; display: flex" aria-hidden="true"><span style="width: {{ dev.width }}; background: #111318"></span></span>
+            <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; font-weight: 600; text-align: right">{{ dev.count }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="padding: 16px 20px 6px; border-top: 1px solid #D9DBE0; margin-top: 8px">
+        <h3 style="margin: 0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">특이사항</h3>
+      </div>
+      <div style="padding: 0 20px 20px; display: flex; flex-direction: column; gap: 10px; font-size: 12px; color: #4B5563; line-height: 1.5">
+        <p style="margin: 0"><strong style="font-weight: 600; color: #111318; font-family: 'IBM Plex Mono', ui-monospace, monospace">com82171</strong> 9월 초과 — 공유 링크 51개, 외부 약 140개 IP가 방송 영상 원본(건당 10~46GB) 다운로드</p>
+        <p style="margin: 0"><strong style="font-weight: 600; color: #111318; font-family: 'IBM Plex Mono', ui-monospace, monospace">com6384</strong> 10/1~10/6 다운로드 약 858GB 중 <strong style="font-weight: 600; color: #B45309">약 817GB가 반복 다운로드</strong></p>
+        <p style="margin: 0"><strong style="font-weight: 600; color: #111318; font-family: 'IBM Plex Mono', ui-monospace, monospace">com81838</strong> 계정 재활성화 완료 — bdrive 측에서 사용자 직접 비활성화 방지 조치 진행</p>
+      </div>
+    </aside>
+
+    <!-- 목록 -->
+    <section aria-label="CS 목록" style="flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column">
+      <div style="padding: 12px 20px; border-bottom: 1px solid #D9DBE0; background: #F7F7F8; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+        <strong style="font-size: 12px; font-weight: 700">{{ listTitle }}</strong>
+        <span style="font-size: 11px; color: #6B7280">행을 누르면 상세가 열립니다</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 92px 150px minmax(0, 1fr) 120px; gap: 12px; padding: 6px 20px; border-bottom: 1px solid #D9DBE0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">
+        <span>접수</span><span>고객사</span><span>현상</span><span>상태</span>
+      </div>
+      <div style="display: flex; flex-direction: column">
+        <sc-for list="{{ rows }}" as="row" hint-placeholder-count="6">
+          <button type="button" onClick="{{ row.pick }}" style="{{ row.style }}">
+            <span style="display: flex; flex-direction: column; gap: 1px; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px">
+              <span style="font-weight: 600">{{ row.day }}</span>
+              <span style="color: #6B7280">{{ row.time }}</span>
+            </span>
+            <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+              <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ row.company }}</span>
+              <span style="font-size: 11px; color: #6B7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ row.deviceLine }}</span>
+            </span>
+            <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+              <span style="font-size: 14px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3">{{ row.title }}</span>
+              <span style="font-size: 12px; color: #4B5563; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden">{{ row.desc }}</span>
+              <span style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px">
+                <sc-for list="{{ row.tickets }}" as="t" hint-placeholder-count="1">
+                  <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; padding: 1px 6px; border: 1px solid #D9DBE0; color: #1D4ED8">{{ t }}</span>
+                </sc-for>
+              </span>
+            </span>
+            <span style="display: flex; align-items: flex-start; gap: 6px; font-size: 12px; font-weight: 500; color: {{ row.statusColor }}">
+              <span style="width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex: none; background: {{ row.statusColor }}"></span>
+              <span>{{ row.status }}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ listEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 40px 20px; text-align: center; color: #6B7280; font-size: 12px">해당 조건의 접수 건이 없습니다.</div>
+      </sc-if>
+    </section>
+
+    <!-- 상세 패널 -->
+    <sc-if value="{{ hasSelected }}" hint-placeholder-val="{{ true }}">
+      <aside aria-label="CS 상세" style="flex: 0 1 400px; min-width: 0; border-left: 1px solid #D9DBE0; background: #FAFAFB; display: flex; flex-direction: column">
+        <div style="padding: 12px 20px; border-bottom: 1px solid #D9DBE0; background: #F7F7F8; display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; font-weight: 600; color: #6B7280">{{ sel.id }}</span>
+          <button type="button" aria-label="상세 닫기" onClick="{{ closeDetail }}" style="width: 26px; height: 26px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; cursor: pointer; display: flex; align-items: center; justify-content: center">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#111318" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          </button>
+        </div>
+        <div style="padding: 18px 20px; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: {{ sel.statusColor }}">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ sel.statusColor }}"></span>{{ sel.status }}
+            </span>
+            <h2 style="margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3">{{ sel.title }}</h2>
+          </div>
+
+          <dl style="margin: 0; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 12px; font-size: 12px">
+            <dt style="color: #6B7280">고객사</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600">{{ sel.company }}</dd>
+            <dt style="color: #6B7280">기기</dt><dd style="margin: 0">{{ sel.deviceLine }}</dd>
+            <dt style="color: #6B7280">접수</dt><dd style="margin: 0; font-family: 'IBM Plex Mono', ui-monospace, monospace">{{ sel.dateFull }}</dd>
+            <dt style="color: #6B7280">접수자</dt><dd style="margin: 0">정양훈</dd>
+            <dt style="color: #6B7280">티켓</dt>
+            <dd style="margin: 0; display: flex; flex-wrap: wrap; gap: 4px">
+              <sc-for list="{{ sel.tickets }}" as="t" hint-placeholder-count="1">
+                <a href="#" style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11px; font-weight: 500; padding: 1px 6px; border: 1px solid #D9DBE0; text-decoration: none">{{ t }}</a>
+              </sc-for>
+              <sc-if value="{{ sel.noTicket }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size: 11px; color: #6B7280">없음</span>
+              </sc-if>
+            </dd>
+          </dl>
+
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <h3 style="margin: 0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">현상 설명</h3>
+            <p style="margin: 0; font-size: 13px; line-height: 1.6; white-space: pre-line; padding: 10px 12px; background: #FFFFFF; border: 1px solid #D9DBE0">{{ sel.descFull }}</p>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <h3 style="margin: 0; font-size: 11px; font-weight: 600; color: #6B7280; letter-spacing: 0.04em">처리 이력</h3>
+            <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+              <sc-for list="{{ sel.history }}" as="h" hint-placeholder-count="3">
+                <li style="display: grid; grid-template-columns: 52px 12px minmax(0, 1fr); gap: 8px; padding: 6px 0; font-size: 12px">
+                  <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #6B7280">{{ h.when }}</span>
+                  <span style="display: flex; justify-content: center; padding-top: 5px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #9CA3AF"></span></span>
+                  <span style="line-height: 1.5">{{ h.text }}</span>
+                </li>
+              </sc-for>
+            </ol>
+          </div>
+
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 32px; padding: 0 12px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">상태 변경</button>
+            <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 32px; padding: 0 12px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">이력 추가</button>
+            <button type="button" style="font: inherit; font-size: 12px; font-weight: 500; height: 32px; padding: 0 12px; border: 1px solid #D9DBE0; border-radius: 2px; background: #FFFFFF; color: #111318; cursor: pointer">수정</button>
+          </div>
+        </div>
+      </aside>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: null, selected: 'c6384' };
+  }
+
+  data() {
+    return [
+      { id: 'c831', day: '10-12 월', time: '13:49', dateFull: '2026-10-12 (월) 13:49', company: 'com 831', device: '기타', ver: '', cat: 'traffic',
+        title: '트래픽 초과', desc: '몇몇 파일이 반복 다운로드로 보입니다. 오류로 인한 초과인지 확인 부탁드립니다.',
+        descFull: '트래픽 초과\n몇몇 파일이 반복 다운로드로 보입니다.\n오류로 인한 초과인지 확인 부탁드립니다.',
+        tickets: [], status: '원인 미확인', statusKind: 'unknown',
+        history: [ { when: '10-12', text: '반복 다운로드로 트래픽 초과 확인, 계정 비활성화' }, { when: '10-12', text: '고객사에 PC클라이언트 로그 요청' }, { when: '10-13', text: 'PC클라이언트가 삭제되어 로그 수집 실패 — 원인 미확인' } ] },
+      { id: 'c5698', day: '10-07 수', time: '16:54', dateFull: '2026-10-07 (수) 16:54', company: 'com 5698 · u14796', device: '웹', ver: '', cat: 'excel',
+        title: '웹에서 파일 열리지 않음', desc: '창고/1. 입고/입고의뢰서/2025년 입고의뢰서/11월 입고의뢰서.xlsx — 35.4MB 엑셀이 크기 제한 메시지로 열리지 않음',
+        descFull: '웹에서 파일 열리지 않음\n창고/1. 입고/입고의뢰서/2025년 입고의뢰서/11월 입고의뢰서.xlsx\n35.4MB 엑셀 파일이 크기 제한 메시지와 함께 열리지 않음',
+        tickets: ['NRF-5029', 'EuroOffice-Resources…'], status: '확인 대기', statusKind: 'wait',
+        history: [ { when: '10-07', text: '접수 · 관련 티켓 NRF-4815 확인' }, { when: '10-08', text: '새 티켓 NRF-5029 생성' }, { when: '10-08', text: '커스텀 수정 가능 여부 확인 요청, 회신 대기' } ] },
+      { id: 'c81838', day: '10-07 수', time: '14:47', dateFull: '2026-10-07 (수) 14:47', company: 'com 81838 · u119607', device: 'CLDAstream Win', ver: '3.19.61', cat: 'login',
+        title: '로그인되지 않음 — 아이디·암호 불일치', desc: '비밀번호를 다시 변경하였으나 동일. 계정 비활성화가 원인으로 확인되어 재활성화 완료.',
+        descFull: '로그인되지 않음, 아이디와 암호가 안맞다는 메시지\n비밀번호를 다시 변경하였으나 동일',
+        tickets: [], status: '완료', statusKind: 'done',
+        history: [ { when: '10-07', text: '계정 비활성화 상태가 원인으로 확인' }, { when: '10-07', text: '계정 재활성화 완료, 로그인 정상' }, { when: '10-08', text: 'bdrive 측에서 사용자 직접 비활성화를 막는 조치 진행' } ] },
+      { id: 'c6384', day: '10-06 화', time: '10:38', dateFull: '2026-10-06 (화) 10:38', company: 'com 6384 · 9212 · 82171', device: '기타', ver: '', cat: 'traffic',
+        title: '10월 트래픽 초과됨', desc: 'com6384 PC클라이언트 반복 다운로드(10/1~10/6 약 817GB), com9212 엑셀 임시파일 반복 다운로드, com82171 9월 공유 링크 외부 다운로드',
+        descFull: 'com 6384, com 9212\n10월 트래픽 초과됨\n\ncom6384: 변동 없는 대용량 파일을 PC클라이언트가 약 34분마다 반복 다운로드. 10/1~10/6 다운로드 약 858GB 중 약 817GB가 반복분.\ncom9212: 엑셀 임시파일 업로드로 PC클라이언트 반복 다운로드 발생, 10/2 임시파일 삭제 후 중단.\ncom82171: 9월분 공유 링크 외부 다운로드로 인한 실사용 초과.',
+        tickets: ['NRF-4985'], status: '로그 대기', statusKind: 'wait',
+        history: [ { when: '10-06', text: '접수 · 3개 고객사 트래픽 초과 확인' }, { when: '10-06', text: 'com6384 · com9212 PC클라이언트 로그 전달 요청' }, { when: '10-07', text: '개발자 확인 요청 — 다운로드 중단 지점부터 재개 기능 추가 예정' }, { when: '10-08', text: 'com9212 NRF-4985 처리 대기' } ] },
+      { id: 'c15490', day: '10-02 금', time: '[시각]', dateFull: '2026-10-02 (금) [시각]', company: 'com 15490 · u42877', device: 'PC client Win', ver: '', cat: 'sync',
+        title: '웹·PC 동기화 폴더 불일치', desc: '"자료" 폴더 내용이 웹과 PC에서 서로 다르게 표시됨',
+        descFull: '웹과 PC 동기화 폴더 불일치\n"자료" 폴더 내용이 웹과 PC에서 서로 다르게 표시됨',
+        tickets: ['NRF-4998'], status: '처리 중', statusKind: 'wait',
+        history: [ { when: '10-02', text: '접수 · NRF-4998 생성' } ] },
+      { id: 'c5234', day: '10-01 목', time: '[시각]', dateFull: '2026-10-01 (목) [시각]', company: 'com 5234', device: 'CLDAstream Win', ver: '3.17.83', cat: 'login',
+        title: '한국어 설정에도 영어로 표시됨', desc: '3.19.42 재설치 후 드라이브 연결은 정상. 표시 언어 고정 원인은 JIRA 분석 요청 후 결과 대기 중.',
+        descFull: 'CLDAstream 3.17.83에서 한국어 설정에도 영어로 표시되는 문제',
+        tickets: ['CLDA-80'], status: '분석 대기', statusKind: 'wait',
+        history: [ { when: '10-01', text: '접수 · 표시 언어 영어 고정 확인' }, { when: '10-02', text: '3.19.42 재설치 안내, 드라이브 연결 정상' }, { when: '10-03', text: 'CLDA-80 JIRA 분석 요청, 결과 대기' } ] }
+    ];
+  }
+
+  renderVals() {
+    const all = this.data();
+    const f = this.state.filter;
+    const statusColor = { wait: '#B45309', done: '#15803D', unknown: '#6B7280' };
+    const catDefs = [
+      { key: 'traffic', label: '트래픽 초과', color: '#B45309', detail: 'com6384 · com9212 · com831 반복 다운로드, com82171 공유 링크 외부 다운로드' },
+      { key: 'login', label: 'CLDAstream 로그인·표시', color: '#1D4ED8', detail: 'com5234 표시 언어 영어 고정, com81838 로그인 실패(계정 비활성화)' },
+      { key: 'excel', label: '웹 대용량 엑셀', color: '#0F766E', detail: 'com5698 35.4MB 파일 크기 제한' },
+      { key: 'sync', label: '웹·PC 동기화', color: '#6B7280', detail: 'com15490 "자료" 폴더 상이' }
+    ];
+    const devDefs = ['CLDAstream Win', '기타', '웹', 'PC client Win'];
+    const isActive = (type, value) => f && f.type === type && f.value === value;
+    const toggle = (type, value) => this.setState({ filter: isActive(type, value) ? null : { type, value } });
+
+    const issues = catDefs.map((c) => {
+      const active = isActive('cat', c.key);
+      return {
+        ...c,
+        count: all.filter((x) => x.cat === c.key).length,
+        pick: () => toggle('cat', c.key),
+        style: 'font: inherit; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; width: 100%; text-align: left; padding: 10px 20px; border: 0; border-left: 3px solid ' + (active ? c.color : 'transparent') + '; background: ' + (active ? '#F1F3F6' : 'transparent') + '; color: #111318; cursor: pointer'
+      };
+    });
+
+    const max = Math.max(...devDefs.map((d) => all.filter((x) => x.device === d).length));
+    const devices = devDefs.map((d) => {
+      const count = all.filter((x) => x.device === d).length;
+      const active = isActive('dev', d);
+      return {
+        label: d, count,
+        width: Math.round((count / max) * 100) + '%',
+        pick: () => toggle('dev', d),
+        style: 'font: inherit; display: grid; grid-template-columns: 110px minmax(0, 1fr) 20px; gap: 10px; align-items: center; width: 100%; padding: 7px 8px; border: 0; background: ' + (active ? '#F1F3F6' : 'transparent') + '; color: #111318; cursor: pointer'
+      };
+    });
+
+    const filtered = all.filter((x) => !f || (f.type === 'cat' ? x.cat === f.value : x.device === f.value));
+    const rows = filtered.map((x) => {
+      const selected = this.state.selected === x.id;
+      return {
+        ...x,
+        deviceLine: x.ver ? x.device + ' · v' + x.ver : x.device,
+        statusColor: statusColor[x.statusKind],
+        pick: () => this.setState({ selected: selected ? null : x.id }),
+        style: 'font: inherit; display: grid; grid-template-columns: 92px 150px minmax(0, 1fr) 120px; gap: 12px; align-items: start; width: 100%; text-align: left; padding: 12px 20px; border: 0; border-bottom: 1px solid #E5E7EB; border-left: 3px solid ' + (selected ? '#111318' : 'transparent') + '; background: ' + (selected ? '#F1F3F6' : '#FFFFFF') + '; color: #111318; cursor: pointer'
+      };
+    });
+
+    const selRaw = all.find((x) => x.id === this.state.selected);
+    const sel = selRaw ? { ...selRaw, deviceLine: selRaw.ver ? selRaw.device + ' · v' + selRaw.ver : selRaw.device, statusColor: statusColor[selRaw.statusKind], noTicket: selRaw.tickets.length === 0 } : null;
+
+    let listTitle = '2026-10 접수 · ' + filtered.length + '건';
+    if (f) {
+      const name = f.type === 'cat' ? catDefs.find((c) => c.key === f.value).label : f.value;
+      listTitle = name + ' · ' + filtered.length + '건 / 전체 6건';
+    }
+
+    return {
+      issues, devices, rows, sel,
+      hasFilter: !!f,
+      hasSelected: !!sel,
+      listEmpty: filtered.length === 0,
+      listTitle,
+      clearFilter: () => this.setState({ filter: null }),
+      closeDetail: () => this.setState({ selected: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -37,17 +37,36 @@ export function monthRange(month: string): { from: string; to: string } {
   };
 }
 
+export type Status = 'open' | 'done' | 'unknown';
+
 export type Ticket = {
+  id: string;
   received_at: string;
   reporter: string;
   customer: string;
   device: string;
   version: string;
+  title: string;
+  status: Status;
+  status_note: string;
   description: string;
   notes: string;
   timeline: string[];
   tickets: string[];
 };
+
+export const STATUS_LABEL: Record<Status, string> = { open: '처리 중', done: '완료', unknown: '원인 미확인' };
+
+// "처리 중(로그 대기)" 형태. 모델 입력과 마크다운에 공통 사용.
+export function statusText(r: Pick<Ticket, 'status' | 'status_note'>): string {
+  const base = STATUS_LABEL[r.status] ?? r.status;
+  return r.status_note ? `${base}(${r.status_note})` : base;
+}
+
+// 입력 목록 번호(1부터)의 기준 순서. mapIssueIndexes 도 같은 순서를 쓴다.
+export function sortByReceived<T extends Pick<Ticket, 'received_at' | 'id'>>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => a.received_at.localeCompare(b.received_at) || a.id.localeCompare(b.id));
+}
 
 export function deviceCounts(rows: Pick<Ticket, 'device'>[]): [string, number][] {
   const counts = new Map<string, number>();
@@ -61,7 +80,7 @@ function kstDate(iso: string): string {
   return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-function oneLine(s: string): string {
+export function oneLine(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
@@ -72,18 +91,19 @@ export function buildSummaryInput(month: string, rows: Ticket[]): string {
   lines.push(`[집계] ${year}년 ${Number(mon)}월 · 총 ${rows.length}건 · ` +
     deviceCounts(rows).map(([d, n]) => `${d} ${n}`).join(' · '));
   lines.push('');
-  lines.push('[CS 목록] 날짜 | 고객사 | 기기 | 버전 | 현상 | 특이사항 | 타임라인 | 티켓');
-  const sorted = [...rows].sort((a, b) => a.received_at.localeCompare(b.received_at));
-  sorted.forEach((r, i) => {
+  lines.push('[CS 목록] 번호. 날짜 | 고객사 | 기기 | 버전 | 제목 | 현상 | 특이사항 | 타임라인 | 티켓 | 상태');
+  sortByReceived(rows).forEach((r, i) => {
     lines.push([
       `${i + 1}. ${kstDate(r.received_at)}`,
       r.customer,
       r.device,
       r.version || '-',
+      oneLine(r.title) || '-',
       oneLine(r.description) || '-',
       oneLine(r.notes) || '-',
       r.timeline.map(oneLine).join(' → ') || '(없음)',
       r.tickets.join(', ') || '-',
+      statusText(r),
     ].join(' | '));
   });
   return lines.join('\n');
@@ -91,12 +111,13 @@ export function buildSummaryInput(month: string, rows: Ticket[]): string {
 
 export function summaryUserMessage(month: string, rows: Ticket[]): string {
   const [year, mon] = month.split('-');
-  return `${buildSummaryInput(month, rows)}\n\n위 목록으로 ${year}년 ${Number(mon)}월 CS 요약을 작성하세요. 첫 줄 제목은 "## ${year}년 ${Number(mon)}월 CS 요약" 입니다.`;
+  return `${buildSummaryInput(month, rows)}\n\n위 목록으로 ${year}년 ${Number(mon)}월의 주요 이슈와 특이사항을 JSON 으로 작성하세요. ticket_indexes 에는 위 목록의 번호를 넣습니다.`;
 }
 
 export type Parsed = {
   reporter: string | null;
   customer: string | null;
+  title: string;
   received_at: string | null;
   device: Device | null;
   version: string;
@@ -116,6 +137,7 @@ export function normalizeParsed(raw: unknown): Parsed {
   return {
     reporter: strOrNull(o.reporter),
     customer: strOrNull(o.customer),
+    title: str(o.title),
     received_at,
     device,
     version: str(o.version),

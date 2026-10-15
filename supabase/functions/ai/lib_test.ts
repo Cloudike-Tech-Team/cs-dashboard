@@ -1,6 +1,7 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  BadRequest, buildSummaryInput, deviceCounts, monthRange, normalizeParsed, sortByReceived, statusText, validateRequest,
+  BadRequest, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
 Deno.test('validateRequest: parse 모드', () => {
@@ -74,4 +75,60 @@ Deno.test('normalizeParsed: 잘못된 기기·날짜는 null, 공백 정리', ()
   assertEquals(normalizeParsed({ device: 'IOS' }).device, 'IOS');
   assertEquals(normalizeParsed(null).version, '');
   assertEquals(normalizeParsed({}).title, '');
+});
+
+Deno.test('normalizeSummary: 타입 방어, 5개 제한, 빈 특이사항 제거', () => {
+  const s = normalizeSummary({
+    issues: [{ label: ' 트래픽 ', detail: 'd', ticket_indexes: [1, '2', 2.5, 3] }, 'junk', ...Array(6).fill({ label: 'x', detail: '', ticket_indexes: [] })],
+    notes: [{ customer: 'com1', text: ' t ' }, { customer: 'com2', text: '' }, null],
+  });
+  assertEquals(s.issues.length, 5);
+  assertEquals(s.issues[0], { label: '트래픽', detail: 'd', ticket_indexes: [1, 3] });
+  assertEquals(s.issues[1], { label: '', detail: '', ticket_indexes: [] });
+  assertEquals(s.notes, [{ customer: 'com1', text: 't' }]);
+  assertEquals(normalizeSummary(null), { issues: [], notes: [] });
+});
+
+Deno.test('mapIssueIndexes: 번호→id, 범위 밖·중복 제거, 빈 이슈·빈 라벨 제거', () => {
+  const rows = [row({ id: 'b' }), row({ id: 'a', received_at: '2026-10-01T00:00:00.000Z' })]; // 정렬 후 1=a, 2=b
+  const out = mapIssueIndexes([
+    { label: 'X', detail: 'dx', ticket_indexes: [2, 2, 0, 3, 1] },
+    { label: 'Y', detail: '', ticket_indexes: [99] },
+    { label: '', detail: '', ticket_indexes: [1] },
+  ], rows);
+  assertEquals(out, [{ label: 'X', detail: 'dx', ticket_ids: ['b', 'a'] }]);
+});
+
+Deno.test('unresolvedLines: done 제외, 메모 → 마지막 타임라인 → 이력 없음 순', () => {
+  const rows = [
+    row({ id: '1', received_at: '2026-10-01T00:00:00.000Z', status: 'done', status_note: '잔여' }),
+    row({ id: '2', received_at: '2026-10-02T00:00:00.000Z', status: 'open', status_note: '로그 대기', tickets: ['NRF-1'] }),
+    row({ id: '3', received_at: '2026-10-03T00:00:00.000Z', status: 'open', timeline: ['10/02 접수', '10/03 개발팀 전달'], tickets: [] }),
+    row({ id: '4', received_at: '2026-10-04T00:00:00.000Z', status: 'unknown', timeline: [], tickets: [], title: '', description: '설명만 있음' }),
+    row({ id: '5', received_at: '2026-10-05T00:00:00.000Z', status: 'open', timeline: [], tickets: [], title: '', description: '' }),
+  ];
+  assertEquals(unresolvedLines(rows), [
+    '**com 81838 / user 119607** — 로그인 실패 · 로그 대기 · NRF-1',
+    '**com 81838 / user 119607** — 로그인 실패 · 10/03 개발팀 전달',
+    '**com 81838 / user 119607** — 설명만 있음 · 원인 미확인',
+    '**com 81838 / user 119607** — (내용 없음) · 조치 이력 없음',
+  ]);
+});
+
+Deno.test('buildSummaryMarkdown: 섹션 순서와 없음 처리', () => {
+  const rows = [row({ status: 'done' })];
+  const md = buildSummaryMarkdown('2026-10', rows, [], []);
+  assertEquals(md, [
+    '## 2026년 10월 CS 요약', '',
+    '**총 1건** · CLDAstream Win 1', '',
+    '### 주요 이슈', '- 없음', '',
+    '### 미해결', '- 없음', '',
+    '### 특이사항', '- 없음',
+  ].join('\n'));
+
+  const md2 = buildSummaryMarkdown('2026-10', [row()], [{ label: '로그인', detail: 'com 81838 로그인 실패, CLD-1', ticket_ids: ['id-1'] }], [{ customer: 'com 81838', text: '재활성화\n완료' }]);
+  const lines = md2.split('\n');
+  assertEquals(lines[5], '1. **로그인** (1건) — com 81838 로그인 실패, CLD-1');
+  assertEquals(lines[8], '- **com 81838 / user 119607** — 로그인 실패 · 10/12 로그 요청 · CLD-1');
+  assertEquals(lines[11], '- **com 81838** 재활성화 완료');
 });

@@ -146,3 +146,74 @@ export function normalizeParsed(raw: unknown): Parsed {
     confidence_notes: str(o.confidence_notes),
   };
 }
+
+// ───────────── summarize 구조화 출력 처리 ─────────────
+export type RawIssue = { label: string; detail: string; ticket_indexes: number[] };
+export type Issue = { label: string; detail: string; ticket_ids: string[] };
+export type Note = { customer: string; text: string };
+
+export const MAX_ISSUES = 5;
+export const MAX_NOTES = 5;
+
+// 구조화 출력이라 형태는 보장되지만 방어적으로 정리. 개수 제한은 여기서(스키마의 maxItems 는 미지원).
+export function normalizeSummary(raw: unknown): { issues: RawIssue[]; notes: Note[] } {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const obj = (v: unknown) => (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const issues = arr(o.issues).slice(0, MAX_ISSUES).map((x) => {
+    const i = obj(x);
+    return {
+      label: str(i.label),
+      detail: str(i.detail),
+      ticket_indexes: arr(i.ticket_indexes).filter((n): n is number => Number.isInteger(n)),
+    };
+  });
+  const notes = arr(o.notes).slice(0, MAX_NOTES)
+    .map((x) => { const n = obj(x); return { customer: str(n.customer), text: str(n.text) }; })
+    .filter((n) => n.text);
+  return { issues, notes };
+}
+
+// 목록 번호(1부터, sortByReceived 순서) → 행 id. 범위 밖·중복은 버리고, 남는 id 가 없거나 라벨이 비면 이슈 제거.
+export function mapIssueIndexes(issues: RawIssue[], rows: Pick<Ticket, 'id' | 'received_at'>[]): Issue[] {
+  const sorted = sortByReceived(rows);
+  const out: Issue[] = [];
+  for (const is of issues) {
+    const ids = new Set<string>();
+    for (const i of is.ticket_indexes) {
+      if (Number.isInteger(i) && i >= 1 && i <= sorted.length) ids.add(sorted[i - 1].id);
+    }
+    const label = oneLine(is.label);
+    if (ids.size && label) out.push({ label, detail: oneLine(is.detail), ticket_ids: [...ids] });
+  }
+  return out;
+}
+
+// 미해결 목록은 LLM 에 맡기지 않고 status 로 만든다.
+export function unresolvedLines(rows: Ticket[]): string[] {
+  return sortByReceived(rows).filter((r) => r.status !== 'done').map((r) => {
+    const what = oneLine(r.title) || oneLine(r.description) || '(내용 없음)';
+    const state = r.status === 'unknown' ? STATUS_LABEL.unknown
+      : r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음');
+    const tickets = r.tickets.length ? ` · ${r.tickets.join(', ')}` : '';
+    return `**${r.customer}** — ${what} · ${state}${tickets}`;
+  });
+}
+
+export function buildSummaryMarkdown(month: string, rows: Ticket[], issues: Issue[], notes: Note[]): string {
+  const [year, mon] = month.split('-');
+  const lines: string[] = [
+    `## ${year}년 ${Number(mon)}월 CS 요약`, '',
+    `**총 ${rows.length}건** · ` + deviceCounts(rows).map(([d, n]) => `${d} ${n}`).join(' · '), '',
+    '### 주요 이슈',
+  ];
+  if (issues.length) issues.forEach((is, i) => lines.push(`${i + 1}. **${is.label}** (${is.ticket_ids.length}건) — ${is.detail}`));
+  else lines.push('- 없음');
+  lines.push('', '### 미해결');
+  const un = unresolvedLines(rows);
+  lines.push(...(un.length ? un.map((l) => `- ${l}`) : ['- 없음']));
+  lines.push('', '### 특이사항');
+  lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${oneLine(n.text)}`) : ['- 없음']));
+  return lines.join('\n');
+}

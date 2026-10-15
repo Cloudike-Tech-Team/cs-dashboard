@@ -6,9 +6,10 @@
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.133.0';
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { MODEL, PARSE_SCHEMA, PARSE_SYSTEM, SUMMARY_SYSTEM } from './prompts.ts';
+import { MODEL, PARSE_SCHEMA, PARSE_SYSTEM, SUMMARY_SCHEMA, SUMMARY_SYSTEM } from './prompts.ts';
 import {
-  BadRequest, monthRange, normalizeParsed, summaryUserMessage, validateRequest, type Ticket,
+  BadRequest, buildSummaryMarkdown, mapIssueIndexes, monthRange, normalizeParsed, normalizeSummary,
+  summaryUserMessage, validateRequest, type Ticket,
 } from './lib.ts';
 
 const CORS = {
@@ -86,30 +87,37 @@ Deno.serve(async (req) => {
     const { from, to } = monthRange(body.month);
     const { data: rows, error: qErr } = await sb
       .from('cs_tickets')
-      .select('received_at,reporter,customer,device,version,description,notes,timeline,tickets')
+      .select('id,received_at,reporter,customer,device,version,title,status,status_note,description,notes,timeline,tickets')
       .gte('received_at', from).lt('received_at', to)
       .order('received_at', { ascending: true })
       .limit(2000);
     if (qErr) throw new HttpError(500, 'CS 목록 조회 실패: ' + qErr.message);
     if (!rows || rows.length === 0) throw new HttpError(400, `${body.month} 에는 요약할 CS가 없습니다.`);
+    const tickets = rows as Ticket[];
 
     const res = await claude.messages.create({
       model: MODEL,
       max_tokens: 4096,
       system: SUMMARY_SYSTEM,
-      output_config: { effort: 'medium' },
-      messages: [{ role: 'user', content: summaryUserMessage(body.month, rows as Ticket[]) }],
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: SUMMARY_SCHEMA } },
+      messages: [{ role: 'user', content: summaryUserMessage(body.month, tickets) }],
     });
     checkStop(res, 'summarize');
-    const content = textOf(res).trim();
-    if (!content) throw new HttpError(502, '요약이 비어 있습니다. 다시 시도하세요.');
+    let raw: unknown;
+    try { raw = JSON.parse(textOf(res)); }
+    catch { throw new HttpError(502, '모델 응답을 해석하지 못했습니다. 다시 시도하세요.'); }
+    const { issues: rawIssues, notes } = normalizeSummary(raw);
+    const issues = mapIssueIndexes(rawIssues, tickets);
+    const content = buildSummaryMarkdown(body.month, tickets, issues, notes);
 
     const { data: saved, error: upErr } = await sb
       .from('cs_monthly_summaries')
       .upsert({
         month: body.month,
         content,
-        ticket_count: rows.length,
+        issues,
+        notes,
+        ticket_count: tickets.length,
         generated_by: user.id,
         generated_at: new Date().toISOString(),
       })

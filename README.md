@@ -8,6 +8,7 @@ cs-dashboard/
 ├── index.html            # 화면 (로그인 / 목록 / 등록·수정 모달)
 ├── css/style.css
 ├── js/config.js          # Supabase URL, anon key  ← 여기만 채우면 됨
+├── js/lib.js             # 순수 함수 (상태 라벨·필터·KPI). `node --test js/lib.test.js`
 ├── js/app.js             # 로직 (supabase-js v2, CDN 로드, 빌드 없음)
 ├── supabase/schema.sql   # 테이블 + RLS + 월별 건수 뷰 + 월간 요약 테이블
 ├── supabase/functions/ai # Edge Function: 슬랙 메시지 자동 입력 · 월간 요약 (Claude API)
@@ -41,7 +42,7 @@ Dashboard → **SQL Editor** → `supabase/schema.sql` 내용 전체를 붙여�
 | `cs_monthly_summaries` | 월간 요약. `content`(마크다운) + `issues`/`notes`(jsonb, 화면 필터용) |
 | `cs_tickets_stamp` 트리거 | `created_by / updated_by / updated_at` 자동 기록 |
 | RLS 정책 4개 | `authenticated` 역할만 select/insert/update/delete |
-| `cs_monthly_counts` 뷰 | KST 기준 월별 건수 (상단 월 칩) |
+| `cs_monthly_counts` 뷰 | KST 기준 월별 건수 (현재 화면에서는 사용하지 않음) |
 
 확인: **Table Editor → cs_tickets** 에 "RLS enabled" 표시가 있어야 합니다.
 
@@ -114,12 +115,13 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 
 | 요구사항 | 구현 |
 |---|---|
-| 모든 CS 수정 가능 | 목록의 행 클릭 → 모달에서 수정/저장. 동시 수정 충돌 시 경고(낙관적 잠금) |
+| 모든 CS 수정 가능 | 행 클릭 → 상세 패널. 「상태 변경」「이력 추가」는 패널에서 바로, 나머지는 「수정」 모달. 동시 수정 충돌 시 경고(낙관적 잠금) |
+| 상태 관리 | `처리 중 / 완료 / 원인 미확인` + 상태 메모(예: 로그 대기). 상단 KPI(접수·대기·완료·연결 티켓)에 집계 |
 | 날짜 역순 정렬 | `received_at desc, created_at desc` |
-| 월별 보기 | 월 선택기 + ◀ ▶ + 최근 12개월 건수 칩. 월 경계는 KST 기준 |
-| 월별 export | **CSV 내보내기** → `CS_YYYY-MM.csv` (해당 월 전체, BOM 포함이라 엑셀에서 한글이 정상 표시됨) |
-| 리스트 입력 | 처리 타임라인·티켓은 `+ 추가` / `−`로 행 단위 입력 |
-| 기타 | 월 내 검색, 기기 필터, 티켓 URL 자동 링크, 접수자 기본값 기억, 삭제(2단계 확인) |
+| 월별 보기 | ◀ ▶ 이번 달. 월 경계는 KST 기준 |
+| 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별 막대를 눌러 목록 필터. 검색어와 AND |
+| 월별 export | **CSV 내보내기** → `CS_YYYY-MM.csv` (해당 월 전체, BOM 포함) |
+| 리스트 입력 | 처리 타임라인·티켓은 `+ 추가` / `−`로 행 단위 입력. 타임라인 앞의 `10/12` 날짜는 상세에서 분리 표시 |
 
 ## 5. 운영 메모
 
@@ -138,8 +140,7 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 API 키는 Supabase secrets 에만 저장되고, 함수는 로그인 JWT 를 검증한 뒤에만 동작합니다.
 
 - **새 CS 모달 → "슬랙 메시지 붙여넣기로 자동 입력"**: 메시지 한 건을 붙여넣고 「분석해서 채우기」를 누르면 접수자·고객사·날짜·기기·버전·현상·특이사항이 채워집니다. 확인 후 저장하세요. 추측한 항목은 "검토 필요" 문구로 표시됩니다.
-- **월 통계 패널**: 그 달의 기기별·고객사별·접수자별 건수. 브라우저에서 계산하며 API 호출이 없습니다.
-- **월간 요약 패널**: 「요약 생성」을 누르면 그 달 CS 전체를 읽어 보고서 형식 마크다운을 만들고 `cs_monthly_summaries` 에 저장합니다. 팀원 모두 같은 요약을 봅니다. 「복사」로 마크다운 원문을 가져갈 수 있습니다.
+- **월간 요약(왼쪽 패널)**: 「생성」/「재생성」을 누르면 그 달 CS 전체를 읽어 **주요 이슈**(비슷한 현상 묶음, 눌러서 목록 필터)와 **특이사항**을 만들어 `cs_monthly_summaries` 에 저장합니다. 미해결 목록·통계는 AI 가 아니라 상태 컬럼으로 계산합니다. 「복사」는 보고서용 마크다운(집계 / 주요 이슈 / 미해결 / 특이사항)을 복사합니다.
 
 프롬프트와 출력 형식은 `supabase/functions/ai/prompts.ts` 에 있습니다. 요약 섹션 구성이나 기기 매핑 규칙을 바꾸려면 이 파일만 고치고 다시 배포하면 됩니다.
 
@@ -163,6 +164,8 @@ npx supabase functions deploy ai --no-verify-jwt
 ```
 
 프롬프트를 고친 뒤에는 3번만 다시 실행하면 됩니다.
+
+2026-10 리디자인 이후 처음 배포할 때는 4번(schema.sql 재실행)을 먼저 하고, 각 월의 요약을 한 번씩 「재생성」해야 주요 이슈 필터가 채워집니다.
 
 ### 비용
 Sonnet 5.5 기준 붙여넣기 분석 1회 약 $0.006, 월간 요약 1회(100건) 약 $0.1. 월 100건 처리해도 $1 안팎입니다.

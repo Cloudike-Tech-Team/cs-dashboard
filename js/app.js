@@ -486,6 +486,9 @@
       f.received_at.value = toLocalInput(row.received_at);
       f.device.value = row.device;
       f.version.value = row.version;
+      f.title.value = row.title;
+      f.status.value = row.status;
+      f.status_note.value = row.status_note;
       f.description.value = row.description;
       f.notes.value = row.notes;
       row.timeline.forEach((v) => addListItem('timeline', v));
@@ -495,6 +498,7 @@
     } else {
       try { f.reporter.value = localStorage.getItem(LS_REPORTER) || ''; } catch { /* 저장소 차단 시 무시 */ }
       f.received_at.value = toLocalInput(new Date().toISOString());
+      f.status.value = 'open';
       $('form-meta').textContent = '';
     }
     if (!listValues('timeline').length) addListItem('timeline');
@@ -528,6 +532,9 @@
       received_at: fromLocalInput(f.received_at.value),
       device: f.device.value,
       version: f.version.value.trim(),
+      title: f.title.value.trim(),
+      status: f.status.value,
+      status_note: f.status_note.value.trim(),
       description: f.description.value.trim(),
       notes: f.notes.value.trim(),
       timeline: listValues('timeline'),
@@ -538,6 +545,8 @@
     if (!payload.customer) missing.push('고객사, 유저');
     if (!payload.received_at) missing.push('날짜');
     if (!DEVICES.includes(payload.device)) missing.push('기기');
+    if (!payload.title) missing.push('제목');
+    if (!L.STATUS[payload.status]) missing.push('상태');
     return { payload, missing };
   }
 
@@ -567,9 +576,9 @@
     try { localStorage.setItem(LS_REPORTER, payload.reporter); } catch { /* 무시 */ }
     dialog.close();
     toast(target ? '수정했습니다.' : '등록했습니다.');
-    // 저장한 CS 가 있는 달로 이동
+    // 저장한 CS 가 있는 달로 이동하고, 그 CS 를 상세에 연다
     state.month = toLocalInput(res.data[0].received_at).slice(0, 7);
-    loadMonth();
+    loadMonth({ selected: res.data[0].id });
   });
 
   function setDeleteConfirm(on) {
@@ -629,6 +638,7 @@
     const f = form.elements;
     if (p.reporter) f.reporter.value = p.reporter;
     if (p.customer) f.customer.value = p.customer;
+    f.title.value = p.title || '';
     const dt = parsedDateToInput(p.received_at);
     if (dt) f.received_at.value = dt;
     f.device.value = p.device && DEVICES.includes(p.device) ? p.device : '';
@@ -639,6 +649,7 @@
     if (!p.received_at) hints.push('날짜: 메시지에 없어 현재 시각 유지');
     else if (/^\d{2}:\d{2}$/.test(p.received_at)) hints.push('날짜: 메시지에 날짜가 없어 오늘로 설정');
     if (!p.device) hints.push('기기: 판단 불가, 직접 선택 필요');
+    if (!p.title) hints.push('제목: 메시지에서 뽑지 못함, 직접 입력 필요');
     if (p.confidence_notes) hints.push(p.confidence_notes);
     showError($('paste-notes'), hints.length ? '검토 필요 · ' + hints.join(' / ') : '');
   }
@@ -715,9 +726,10 @@
     if (state.loading) return;
     if ($('list-error').textContent) { toast('목록을 불러오지 못해 내보낼 수 없습니다.'); return; }
     if (!state.rows.length) { toast('내보낼 CS가 없습니다.'); return; }
-    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
+    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', '상태', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
     const lines = [header, ...state.rows.map((r) => [
       fmtDateTime(r.received_at), r.reporter, r.customer, r.device, r.version,
+      r.title, L.statusLabel(r),
       r.description, r.notes, r.timeline.join('\n'), r.tickets.join('\n'),
       fmtDateTime(r.created_at), fmtDateTime(r.updated_at),
     ])].map((cols) => cols.map(csvCell).join(','));

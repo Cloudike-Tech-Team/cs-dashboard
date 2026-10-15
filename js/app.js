@@ -264,7 +264,99 @@
     renderDetail();
   }
 
-  function renderDetail() { /* Task 8 */ }
+  // ───────────── 상세 패널 ─────────────
+  function selectedRow() { return state.rows.find((x) => x.id === state.selected) || null; }
+
+  function renderDetail() {
+    const r = selectedRow();
+    $('detail').hidden = !r;
+    if (!r) return;
+    $('detail-when').textContent = fmtDateTime(r.received_at);
+    $('detail-status').textContent = L.statusLabel(r);
+    $('detail-status').style.setProperty('--c', L.statusColor(r));
+    $('detail-title').textContent = r.title || '(제목 없음)';
+    $('detail-customer').textContent = r.customer;
+    $('detail-device').textContent = deviceLine(r);
+    $('detail-received').textContent = fmtDateTime(r.received_at);
+    $('detail-reporter').textContent = r.reporter;
+    $('detail-tickets').replaceChildren(...(r.tickets.length ? r.tickets.map(ticketNode) : [el('span', { class: 'muted small', text: '없음' })]));
+    $('detail-desc').textContent = r.description || '—';
+    $('detail-history').replaceChildren(...(r.timeline.length
+      ? r.timeline.map((t) => {
+          const { when, text } = L.splitTimeline(t);
+          return el('li', {}, el('span', { class: 'mono muted', text: when }), el('span', { class: 'hist-dot' }), el('span', { text }));
+        })
+      : [el('li', { class: 'muted', text: '이력 없음' })]));
+    showError($('detail-error'), '');
+    renderQuick(r);
+  }
+
+  function renderQuick(r) {
+    const box = $('quick-box');
+    box.replaceChildren();
+    ['status-btn', 'history-btn', 'edit-btn'].forEach((id) => { $(id).disabled = !!state.quick || state.busy; });
+    if (state.quick === 'status') {
+      const sel = el('select', { 'aria-label': '상태' },
+        Object.entries(L.STATUS).map(([k, v]) => el('option', { value: k, text: v.label })));
+      sel.value = r.status;
+      const note = el('input', { type: 'text', maxlength: '50', placeholder: '상태 메모 (예: 로그 대기)' });
+      note.value = r.status_note;
+      const submit = () => saveQuick(r, { status: sel.value, status_note: note.value.trim() });
+      note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
+      box.append(el('div', { class: 'quick-form' }, sel, note, quickButtons(submit)));
+      sel.focus();
+    } else if (state.quick === 'history') {
+      const input = el('input', { type: 'text', maxlength: '2000', placeholder: '처리 내용' });
+      const p = kstParts(new Date());
+      input.value = `${p.month}/${p.day} `;
+      const submit = () => {
+        const t = input.value.trim();
+        if (!t || /^\d{1,2}\/\d{1,2}$/.test(t)) { showError($('detail-error'), '처리 내용을 입력하세요.'); input.focus(); return; }
+        saveQuick(r, { timeline: [...r.timeline, t] });
+      };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
+      box.append(el('div', { class: 'quick-form' }, input, quickButtons(submit)));
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }
+  }
+
+  function quickButtons(onSave) {
+    const save = el('button', { type: 'button', class: 'btn primary small', text: '저장' });
+    save.addEventListener('click', onSave);
+    const cancel = el('button', { type: 'button', class: 'btn small', text: '취소' });
+    cancel.addEventListener('click', () => { state.quick = null; renderDetail(); });
+    return el('div', { class: 'quick-actions' }, save, cancel);
+  }
+
+  // 상세 패널에서 한 필드만 고치는 저장. 수정 모달과 같은 낙관적 잠금.
+  async function saveQuick(r, patch) {
+    if (state.busy) return;
+    state.busy = true;
+    showError($('detail-error'), '');
+    const controls = [...$('quick-box').querySelectorAll('button, input, select')];
+    controls.forEach((n) => { n.disabled = true; });
+    const { data, error } = await sb.from('cs_tickets').update(patch)
+      .eq('id', r.id)
+      .eq('updated_at', r.updated_at)
+      .select();
+    state.busy = false;
+    if (error || data.length === 0) {
+      controls.forEach((n) => { n.disabled = false; });
+      showError($('detail-error'), error ? '저장 실패: ' + error.message : CONFLICT_MSG);
+      return;
+    }
+    const idx = state.rows.findIndex((x) => x.id === r.id);
+    if (idx >= 0) state.rows[idx] = data[0];
+    state.quick = null;
+    toast('저장했습니다.');
+    renderAll();
+  }
+
+  $('status-btn').addEventListener('click', () => { state.quick = 'status'; renderDetail(); });
+  $('history-btn').addEventListener('click', () => { state.quick = 'history'; renderDetail(); });
+  $('edit-btn').addEventListener('click', () => { const r = selectedRow(); if (r) openDialog(r); });
+  $('detail-close').addEventListener('click', () => { state.selected = null; state.quick = null; renderList(); renderDetail(); });
 
   // ───────────── KPI · 사이드바 ─────────────
   function renderKpi() {
@@ -352,6 +444,7 @@
   $('new-btn').addEventListener('click', () => openDialog(null));
 
   // ───────────── 등록/수정 폼 ─────────────
+  const CONFLICT_MSG = '다른 사용자가 먼저 수정했거나 삭제된 CS입니다. 창을 닫고 목록을 다시 연 뒤 수정하세요.';
   const dialog = $('cs-dialog');
   const form = $('cs-form');
 
@@ -478,7 +571,6 @@
     state.month = toLocalInput(res.data[0].received_at).slice(0, 7);
     loadMonth();
   });
-  const CONFLICT_MSG = '다른 사용자가 먼저 수정했거나 삭제된 CS입니다. 창을 닫고 목록을 다시 연 뒤 수정하세요.';
 
   function setDeleteConfirm(on) {
     $('delete-btn').hidden = on || !state.editing;

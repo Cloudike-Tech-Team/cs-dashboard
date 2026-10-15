@@ -37,7 +37,8 @@ Dashboard → **SQL Editor** → `supabase/schema.sql` 내용 전체를 붙여�
 생성되는 것:
 | 객체 | 설명 |
 |---|---|
-| `cs_tickets` | CS 테이블. 타임라인·티켓은 `text[]` 배열 |
+| `cs_tickets` | CS 테이블. 제목·상태(`open/done/unknown`)·상태 메모 포함. 타임라인·티켓은 `text[]` 배열 |
+| `cs_monthly_summaries` | 월간 요약. `content`(마크다운) + `issues`/`notes`(jsonb, 화면 필터용) |
 | `cs_tickets_stamp` 트리거 | `created_by / updated_by / updated_at` 자동 기록 |
 | RLS 정책 4개 | `authenticated` 역할만 select/insert/update/delete |
 | `cs_monthly_counts` 뷰 | KST 기준 월별 건수 (상단 월 칩) |

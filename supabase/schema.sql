@@ -18,6 +18,10 @@ create table if not exists public.cs_tickets (
   notes        text not null default '' check (char_length(notes) <= 10000),   -- 특이사항
   timeline     text[] not null default '{}',                                    -- 처리 타임라인
   tickets      text[] not null default '{}',                                    -- 티켓
+  title        text not null default '' check (char_length(title) <= 200),      -- 현상 제목
+  status       text not null default 'open'
+                 check (status in ('open', 'done', 'unknown')),                 -- 처리 상태
+  status_note  text not null default '' check (char_length(status_note) <= 50), -- 상태 메모(예: 로그 대기)
   created_by   uuid references auth.users(id) on delete set null,
   updated_by   uuid references auth.users(id) on delete set null,
   created_at   timestamptz not null default now(),
@@ -27,6 +31,20 @@ create table if not exists public.cs_tickets (
 -- 월별 조회 + 날짜 역순 정렬용 인덱스
 create index if not exists cs_tickets_received_at_idx
   on public.cs_tickets (received_at desc, created_at desc);
+
+-- 1-b. 2026-10 리디자인: 제목·상태 컬럼 (기존 설치에 추가. 신규 설치는 위 create 에 이미 포함)
+alter table public.cs_tickets
+  add column if not exists title       text not null default ''
+                                        check (char_length(title) <= 200),
+  add column if not exists status      text not null default 'open'
+                                        check (status in ('open', 'done', 'unknown')),
+  add column if not exists status_note text not null default ''
+                                        check (char_length(status_note) <= 50);
+
+-- 기존 행 백필: 제목이 비어 있으면 현상설명 첫 줄
+update public.cs_tickets
+   set title = left(split_part(description, E'\n', 1), 200)
+ where title = '' and description <> '';
 
 -- ─────────────────────────────────────────────
 -- 2. 작성자/수정자/수정시각 자동 기록 (클라이언트가 위조 불가)
@@ -107,9 +125,16 @@ create table if not exists public.cs_monthly_summaries (
   month        text primary key check (month ~ '^\d{4}-\d{2}$'),
   content      text not null check (char_length(content) <= 20000),
   ticket_count int  not null check (ticket_count >= 0),
+  issues       jsonb not null default '[]'::jsonb,   -- [{label, detail, ticket_ids: uuid[]}]
+  notes        jsonb not null default '[]'::jsonb,   -- [{customer, text}]
   generated_by uuid references auth.users(id) on delete set null,
   generated_at timestamptz not null default now()
 );
+
+-- 기존 설치에 추가
+alter table public.cs_monthly_summaries
+  add column if not exists issues jsonb not null default '[]'::jsonb,
+  add column if not exists notes  jsonb not null default '[]'::jsonb;
 
 alter table public.cs_monthly_summaries enable row level security;
 

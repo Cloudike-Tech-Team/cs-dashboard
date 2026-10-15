@@ -28,6 +28,7 @@
     loadSeq: 0,                // 빠른 월 이동 시 늦게 도착한 응답 무시용
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
+    summaryBusyMonth: null,    // 생성 중인 월 ('YYYY-MM'). 다른 달을 보고 있으면 "생성 중" 을 표시하지 않음
     filter: null,              // null | { type: 'issue', value: index } | { type: 'device', value: device }
     selected: null,            // 상세 패널에 열린 row id
     quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
@@ -262,6 +263,8 @@
     state.quick = null;
     renderList();
     renderDetail();
+    // 세로로 쌓이는 폭에서는 상세가 목록 아래에 있어 눈에 띄지 않으므로 스크롤해 준다
+    if (state.selected && window.matchMedia('(max-width: 1000px)').matches) $('detail').scrollIntoView({ block: 'start' });
   }
 
   // ───────────── 상세 패널 ─────────────
@@ -301,6 +304,8 @@
       sel.value = r.status;
       const note = el('input', { type: 'text', maxlength: '50', placeholder: '상태 메모 (예: 로그 대기)' });
       note.value = r.status_note;
+      // 상태를 바꾸면 이전 상태의 메모("로그 대기")가 새 상태의 라벨로 남지 않게 비운다
+      sel.addEventListener('change', () => { note.value = sel.value === r.status ? r.status_note : ''; });
       const submit = () => saveQuick(r, { status: sel.value, status_note: note.value.trim() });
       note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
       box.append(el('div', { class: 'quick-form' }, sel, note, quickButtons(submit)));
@@ -388,7 +393,8 @@
   function renderSidebar() {
     const s = state.summary;
     // 헤더
-    $('summary-meta').textContent = state.summaryBusy ? '생성 중… (최대 1분)' : s ? `생성 ${fmtShort(s.generated_at)} · ${s.ticket_count}건 기준` : '아직 생성된 요약이 없습니다';
+    const busyHere = state.summaryBusy && state.summaryBusyMonth === state.month;
+    $('summary-meta').textContent = busyHere ? '생성 중… (최대 1분)' : s ? `생성 ${fmtShort(s.generated_at)} · ${s.ticket_count}건 기준` : '아직 생성된 요약이 없습니다';
     $('summary-copy-btn').hidden = !s;
     $('summary-gen-btn').textContent = s ? '재생성' : '생성';
     $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
@@ -690,14 +696,14 @@
     if (state.summaryBusy) return;
     if (state.loading || !state.rows.length) { toast('요약할 CS가 없습니다.'); return; }
     const month = state.month;
-    const seq = state.loadSeq;
     state.summaryBusy = true;
+    state.summaryBusyMonth = month;
     showError($('summary-error'), '');
     renderSidebar();
     try {
       const { summary } = await callAi({ mode: 'summarize', month });
       state.summaryBusy = false;
-      if (seq !== state.loadSeq) return;     // 그 사이 월을 옮겼으면 화면에 반영하지 않음
+      if (state.month !== month) { renderSidebar(); return; }   // 그 사이 다른 달로 옮겼으면 그 달 화면만 풀어 준다
       state.summary = summary;
       if (state.filter && state.filter.type === 'issue') state.filter = null;   // 이슈 번호가 바뀌므로
       renderSidebar();
@@ -705,8 +711,8 @@
       toast('요약을 저장했습니다.');
     } catch (e) {
       state.summaryBusy = false;
-      if (seq !== state.loadSeq) return;
       renderSidebar();
+      if (state.month !== month) return;
       showError($('summary-error'), '요약 생성 실패: ' + e.message);
     }
   });
@@ -748,5 +754,9 @@
   DEVICES.forEach((d) => devSelect.append(el('option', { value: d, text: d })));
   const statusSelect = form.elements.status;
   Object.entries(L.STATUS).forEach(([k, v]) => statusSelect.append(el('option', { value: k, text: v.label })));
+  statusSelect.addEventListener('change', () => {
+    const orig = state.editing;
+    form.elements.status_note.value = orig && statusSelect.value === orig.status ? orig.status_note : '';
+  });
   initAuth();
 })();

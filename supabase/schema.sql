@@ -41,10 +41,13 @@ alter table public.cs_tickets
   add column if not exists status_note text not null default ''
                                         check (char_length(status_note) <= 50);
 
--- 기존 행 백필: 제목이 비어 있으면 현상설명 첫 줄
+-- 기존 행 백필: 제목이 비어 있으면 현상설명 첫 줄.
+-- 감사 트리거를 잠시 끈다 (updated_by/updated_at 이 덮이지 않게, 열려 있는 수정 모달이 충돌 오류를 받지 않게).
+alter table public.cs_tickets disable trigger cs_tickets_stamp;
 update public.cs_tickets
    set title = left(split_part(description, E'\n', 1), 200)
- where title = '' and description <> '';
+ where title = '' and split_part(description, E'\n', 1) <> '';
+alter table public.cs_tickets enable trigger cs_tickets_stamp;
 
 -- ─────────────────────────────────────────────
 -- 2. 작성자/수정자/수정시각 자동 기록 (클라이언트가 위조 불가)

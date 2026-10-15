@@ -91,8 +91,10 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 /* 3열 본문 */
 .body { display: flex; flex-wrap: wrap; align-items: stretch; flex: 1; }
 .side { flex: 0 1 300px; min-width: 0; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
-.list { flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column; }
+.list { flex: 999 1 280px; min-width: 0; display: flex; flex-direction: column; }
 .detail { flex: 0 1 400px; min-width: 0; border-left: 1px solid var(--line); background: var(--panel-2); display: flex; flex-direction: column; }
+/* 긴 목록을 내려도 요약·상세는 화면에 붙어 있고 각자 스크롤한다 (300+280+400 < 1000 이라 3열 구간에서 줄바꿈 없음) */
+.side, .detail { position: sticky; top: 0; align-self: flex-start; max-height: 100vh; overflow-y: auto; }
 
 .panel-head { padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .panel-head strong { font-size: 12px; font-weight: 700; }
@@ -199,8 +201,9 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
 
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--text); color: #FFFFFF; padding: 8px 16px; border-radius: 2px; z-index: 10; font-size: 12px; }
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .side, .list, .detail { flex: 1 1 100%; border-left: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+  .side, .detail { position: static; max-height: none; overflow: visible; }
   .list-head { display: none; }
   .cs-row { grid-template-columns: 72px minmax(0, 1fr); }
   .col-who { grid-column: 2; }

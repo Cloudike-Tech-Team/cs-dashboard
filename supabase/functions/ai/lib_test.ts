@@ -132,3 +132,28 @@ Deno.test('buildSummaryMarkdown: 섹션 순서와 없음 처리', () => {
   assertEquals(lines[8], '- **com 81838 / user 119607** — 로그인 실패 · 10/12 로그 요청 · CLD-1');
   assertEquals(lines[11], '- **com 81838** 재활성화 완료');
 });
+
+Deno.test('unresolvedLines: 긴 제목·상태·티켓은 잘라서 content 제한을 지킨다', () => {
+  const r = row({ title: '가'.repeat(300), status_note: '나'.repeat(300), tickets: ['다'.repeat(300)] });
+  const line = unresolvedLines([r])[0];
+  assertEquals(line.includes('가'.repeat(80) + '…'), true);
+  assertEquals(line.includes('가'.repeat(81)), false);
+  assertEquals(line.includes('나'.repeat(100) + '…'), true);
+  assertEquals(line.includes('나'.repeat(101)), false);
+  assertEquals(line.includes('다'.repeat(100) + '…'), true);
+  assertEquals(line.includes('다'.repeat(101)), false);
+});
+
+Deno.test('buildSummaryMarkdown: 미해결 30건 초과는 "외 N건", 특이사항 본문 200자 제한, 전체 20,000자 이하', () => {
+  const rows = Array.from({ length: 45 }, (_, i) => row({
+    id: `id-${String(i).padStart(3, '0')}`, received_at: `2026-10-${String((i % 28) + 1).padStart(2, '0')}T00:00:00.000Z`,
+    title: '제'.repeat(200), status_note: '상'.repeat(50), tickets: ['티'.repeat(2000)], customer: '고'.repeat(200),
+  }));
+  const md = buildSummaryMarkdown('2026-10', rows, [], [{ customer: 'com1', text: '특'.repeat(500) }]);
+  const lines = md.split('\n');
+  const unresolved = lines.filter((l) => l.startsWith('- **'));
+  assertEquals(unresolved.length, 30 + 1);           // 30건 + 특이사항 1줄
+  assertEquals(lines.includes('- 외 15건'), true);
+  assertEquals(lines[lines.length - 1], '- **com1** ' + '특'.repeat(200) + '…');
+  assertEquals(md.length <= 20000, true, `length ${md.length}`);
+});

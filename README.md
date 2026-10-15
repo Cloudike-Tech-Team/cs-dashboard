@@ -165,7 +165,11 @@ npx supabase functions deploy ai --no-verify-jwt
 
 프롬프트를 고친 뒤에는 3번만 다시 실행하면 됩니다.
 
-2026-10 리디자인 이후 처음 배포할 때는 4번(schema.sql 재실행)을 먼저 하고, 각 월의 요약을 한 번씩 「재생성」해야 주요 이슈 필터가 채워집니다.
+2026-10 리디자인 이후 처음 배포할 때는 4번(schema.sql 재실행)을 먼저 합니다. 기존 CS 는 모두 상태가 `처리 중`으로 시작하므로, 과거 달은 상세 패널의 「상태 변경」으로 끝난 건을 `완료`로 정리한 뒤 「재생성」하세요. 정리 전에 재생성하면 그 달의 모든 건이 미해결 목록에 들어갑니다(최대 30건까지 표시). 지난달 이전 건을 한 번에 완료 처리하려면 SQL Editor 에서:
+```sql
+update public.cs_tickets set status = 'done'
+ where status = 'open' and received_at < date_trunc('month', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul';
+```
 
 ### 비용
 Sonnet 5.5 기준 붙여넣기 분석 1회 약 $0.006, 월간 요약 1회(100건) 약 $0.1. 월 100건 처리해도 $1 안팎입니다.

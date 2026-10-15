@@ -190,13 +190,20 @@ export function mapIssueIndexes(issues: RawIssue[], rows: Pick<Ticket, 'id' | 'r
   return out;
 }
 
+// content 컬럼은 20,000자 제한. 미해결 목록은 LLM max_tokens 로 잘리지 않으므로 여기서 길이를 묶는다.
+export const MAX_UNRESOLVED = 30;
+const MAX_NOTE_TEXT = 200;
+export function clip(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
 // 미해결 목록은 LLM 에 맡기지 않고 status 로 만든다.
 export function unresolvedLines(rows: Ticket[]): string[] {
   return sortByReceived(rows).filter((r) => r.status !== 'done').map((r) => {
-    const what = oneLine(r.title) || oneLine(r.description) || '(내용 없음)';
-    const state = r.status === 'unknown' ? STATUS_LABEL.unknown
-      : r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음');
-    const tickets = r.tickets.length ? ` · ${r.tickets.join(', ')}` : '';
+    const what = clip(oneLine(r.title) || oneLine(r.description) || '(내용 없음)', 80);
+    const state = clip(r.status === 'unknown' ? STATUS_LABEL.unknown
+      : r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음'), 100);
+    const tickets = r.tickets.length ? ` · ${clip(r.tickets.join(', '), 100)}` : '';
     return `**${r.customer}** — ${what} · ${state}${tickets}`;
   });
 }
@@ -212,8 +219,9 @@ export function buildSummaryMarkdown(month: string, rows: Ticket[], issues: Issu
   else lines.push('- 없음');
   lines.push('', '### 미해결');
   const un = unresolvedLines(rows);
-  lines.push(...(un.length ? un.map((l) => `- ${l}`) : ['- 없음']));
+  lines.push(...(un.length ? un.slice(0, MAX_UNRESOLVED).map((l) => `- ${l}`) : ['- 없음']));
+  if (un.length > MAX_UNRESOLVED) lines.push(`- 외 ${un.length - MAX_UNRESOLVED}건`);
   lines.push('', '### 특이사항');
-  lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${oneLine(n.text)}`) : ['- 없음']));
+  lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${clip(oneLine(n.text), MAX_NOTE_TEXT)}`) : ['- 없음']));
   return lines.join('\n');
 }

@@ -22,6 +22,8 @@ create table if not exists public.cs_tickets (
   status       text not null default 'open'
                  check (status in ('open', 'waiting', 'delayed', 'deploy', 'done', 'unknown')), -- 처리 상태
   status_note  text not null default '' check (char_length(status_note) <= 50), -- 상태 메모(예: 로그 대기)
+  assignee     text not null default '' check (char_length(assignee) <= 100),   -- 개발팀 CS 담당자
+  ticket_assignee text not null default '' check (char_length(ticket_assignee) <= 100), -- 티켓 처리 중인 사람
   created_by   uuid references auth.users(id) on delete set null,
   updated_by   uuid references auth.users(id) on delete set null,
   created_at   timestamptz not null default now(),
@@ -40,6 +42,13 @@ alter table public.cs_tickets
                                         check (status in ('open', 'waiting', 'delayed', 'deploy', 'done', 'unknown')),
   add column if not exists status_note text not null default ''
                                         check (char_length(status_note) <= 50);
+
+-- 담당자 컬럼 (기존 설치에 추가)
+alter table public.cs_tickets
+  add column if not exists assignee        text not null default ''
+                                            check (char_length(assignee) <= 100),
+  add column if not exists ticket_assignee text not null default ''
+                                            check (char_length(ticket_assignee) <= 100);
 
 -- 상태 목록이 바뀌면 여기 제약과 js/lib.js 의 STATUS, functions/ai/lib.ts 의 Status 를 함께 바꾼다.
 -- (컬럼이 이미 있던 설치는 위 add column 이 건너뛰므로 제약을 다시 건다)

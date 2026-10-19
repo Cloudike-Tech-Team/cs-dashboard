@@ -50,9 +50,17 @@
     return issues.map((is) => ({ ...is, count: (is.ticket_ids || []).filter((id) => ids.has(id)).length }));
   }
 
+  // "담당 오민식 · 티켓 김개발". 같은 사람이면 한 번만, 둘 다 비면 "담당 미지정".
+  function assigneeLine(row) {
+    const a = row.assignee || '', t = row.ticket_assignee || '';
+    const head = a ? `담당 ${a}` : '담당 미지정';
+    return t && t !== a ? `${head} · 티켓 ${t}` : head;
+  }
+
   function applyFilter(rows, filter, issues) {
     if (!filter) return rows;
     if (filter.type === 'device') return rows.filter((r) => r.device === filter.value);
+    if (filter.type === 'assignee') return rows.filter((r) => (r.assignee || '') === filter.value);
     const issue = issues[filter.value];
     if (!issue) return rows;
     const ids = new Set(issue.ticket_ids || []);
@@ -63,9 +71,9 @@
     const needle = (q || '').trim().toLowerCase();
     if (!needle) return true;
     return [row.title, row.reporter, row.customer, row.version, row.description, row.notes,
-      statusLabel(row), ...(row.timeline || []), ...(row.tickets || [])]
+      statusLabel(row), row.assignee, row.ticket_assignee, ...(row.timeline || []), ...(row.tickets || [])]
       .some((v) => (v || '').toLowerCase().includes(needle));
   }
 
-  return { STATUS, ISSUE_COLORS, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch };
+  return { STATUS, ISSUE_COLORS, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine };
 });

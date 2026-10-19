@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
     const { from, to } = monthRange(body.month);
     const { data: rows, error: qErr } = await sb
       .from('cs_tickets')
-      .select('id,received_at,reporter,customer,device,version,title,status,status_note,description,notes,timeline,tickets')
+      .select('id,received_at,reporter,customer,device,version,title,status,status_note,description,notes,timeline,tickets,assignee,ticket_assignee')
       .gte('received_at', from).lt('received_at', to)
       .order('received_at', { ascending: true })
       .limit(2000);

@@ -88,6 +88,9 @@
         <div class="side-title"><h3>기기별 · 눌러서 필터</h3></div>
         <div id="device-list" class="device-list"></div>
 
+        <div class="side-title"><h3>담당자별 · 눌러서 필터</h3></div>
+        <div id="assignee-list" class="device-list"></div>
+
         <div class="side-title bordered"><h3>특이사항</h3></div>
         <div id="notes-list" class="notes-list"></div>
       </aside>
@@ -122,6 +125,8 @@
             <dt>기기</dt><dd id="detail-device"></dd>
             <dt>접수</dt><dd id="detail-received" class="mono"></dd>
             <dt>접수자</dt><dd id="detail-reporter"></dd>
+            <dt>담당자</dt><dd id="detail-assignee"></dd>
+            <dt>티켓 담당</dt><dd id="detail-ticket-assignee"></dd>
             <dt>티켓</dt><dd id="detail-tickets" class="ticket-chips"></dd>
           </dl>
           <div class="detail-section">
@@ -137,6 +142,7 @@
           <div class="detail-actions">
             <button id="status-btn" class="btn" type="button">상태 변경</button>
             <button id="history-btn" class="btn" type="button">이력 추가</button>
+            <button id="assignee-btn" class="btn" type="button">담당 변경</button>
             <button id="edit-btn" class="btn" type="button">수정</button>
           </div>
         </div>
@@ -170,7 +176,10 @@
         <label>버전<input name="version" maxlength="100"></label>
         <label>상태<select name="status"></select></label>
         <label>상태 메모<input name="status_note" maxlength="50" placeholder="예) 로그 대기"></label>
+        <label>담당자 (개발팀)<input name="assignee" maxlength="100" list="assignee-names" placeholder="예) 오민식"></label>
+        <label>티켓 담당<input name="ticket_assignee" maxlength="100" list="assignee-names" placeholder="티켓을 처리 중인 사람"></label>
       </div>
+      <datalist id="assignee-names"></datalist>
 
       <label>제목 *<input name="title" maxlength="200" required placeholder="현상을 한 줄로"></label>
       <label>현상설명<textarea name="description" rows="3" maxlength="10000"></textarea></label>

@@ -33,21 +33,21 @@ Deno.test('deviceCounts: 건수 내림차순, 동률은 DEVICES 순서', () => {
 const row = (over = {}) => ({
   id: 'id-1', received_at: '2026-10-12T05:47:00.000Z', reporter: '정양훈', customer: 'com 81838 / user 119607',
   device: 'CLDAstream Win', version: '3.19.61', title: '로그인 실패', status: 'open' as const, status_note: '',
-  description: '로그인\n실패', notes: '', timeline: ['10/12 로그 요청'], tickets: ['CLD-1'], ...over,
+  description: '로그인\n실패', notes: '', timeline: ['10/12 로그 요청'], tickets: ['CLD-1'], assignee: '', ticket_assignee: '', ...over,
 });
 
 Deno.test('buildSummaryInput: 집계 헤더와 한 줄 행 (제목·상태 포함)', () => {
   const out = buildSummaryInput('2026-10', [
     row(),
     row({ id: 'id-0', device: '웹', received_at: '2026-10-01T01:00:00.000Z', timeline: [], tickets: [], status: 'done', title: '' }),
-    row({ id: 'id-2', received_at: '2026-10-13T01:00:00.000Z', status: 'unknown', status_note: '로그 수집 실패' }),
+    row({ id: 'id-2', received_at: '2026-10-13T01:00:00.000Z', status: 'unknown', status_note: '로그 수집 실패', assignee: '오민식', ticket_assignee: '김개발' }),
   ]);
   const lines = out.split('\n');
   assertEquals(lines[0], '[집계] 2026년 10월 · 총 3건 · CLDAstream Win 2 · 웹 1');
-  assertEquals(lines[2], '[CS 목록] 번호. 날짜 | 고객사 | 기기 | 버전 | 제목 | 현상 | 특이사항 | 타임라인 | 티켓 | 상태');
-  assertEquals(lines[3], '1. 10/01 | com 81838 / user 119607 | 웹 | 3.19.61 | - | 로그인 실패 | - | (없음) | - | 완료');
-  assertEquals(lines[4], '2. 10/12 | com 81838 / user 119607 | CLDAstream Win | 3.19.61 | 로그인 실패 | 로그인 실패 | - | 10/12 로그 요청 | CLD-1 | 처리 중');
-  assertEquals(lines[5], '3. 10/13 | com 81838 / user 119607 | CLDAstream Win | 3.19.61 | 로그인 실패 | 로그인 실패 | - | 10/12 로그 요청 | CLD-1 | 원인 미확인(로그 수집 실패)');
+  assertEquals(lines[2], '[CS 목록] 번호. 날짜 | 고객사 | 기기 | 버전 | 제목 | 현상 | 특이사항 | 타임라인 | 티켓 | 상태 | 담당');
+  assertEquals(lines[3], '1. 10/01 | com 81838 / user 119607 | 웹 | 3.19.61 | - | 로그인 실패 | - | (없음) | - | 완료 | -');
+  assertEquals(lines[4], '2. 10/12 | com 81838 / user 119607 | CLDAstream Win | 3.19.61 | 로그인 실패 | 로그인 실패 | - | 10/12 로그 요청 | CLD-1 | 처리 중 | -');
+  assertEquals(lines[5], '3. 10/13 | com 81838 / user 119607 | CLDAstream Win | 3.19.61 | 로그인 실패 | 로그인 실패 | - | 10/12 로그 요청 | CLD-1 | 원인 미확인(로그 수집 실패) | 오민식(티켓 김개발)');
 });
 
 Deno.test('sortByReceived: 날짜 오름차순, 동률은 id', () => {
@@ -71,8 +71,10 @@ Deno.test('normalizeParsed: 잘못된 기기·날짜는 null, 공백 정리', ()
   });
   assertEquals(p, {
     reporter: '정양훈', customer: null, title: '로그인 안 됨', received_at: '14:47', device: null,
-    version: '3.19.61', description: 'x', notes: '', timeline: [], confidence_notes: '',
+    version: '3.19.61', description: 'x', notes: '', timeline: [], assignee: '', confidence_notes: '',
   });
+  assertEquals(normalizeParsed({ assignee: ' 오민식 ' }).assignee, '오민식');
+  assertEquals(normalizeParsed({ assignee: 7 }).assignee, '');
   assertEquals(normalizeParsed({ received_at: '2026-10-12T14:47' }).received_at, '2026-10-12T14:47');
   assertEquals(normalizeParsed({ received_at: '어제' }).received_at, null);
   assertEquals(normalizeParsed({ device: 'IOS' }).device, 'IOS');
@@ -123,6 +125,7 @@ Deno.test('unresolvedLines: done 제외, 메모 → 마지막 타임라인 → �
     row({ id: '6', received_at: '2026-10-06T00:00:00.000Z', status: 'delayed', status_note: '개발 일정', timeline: ['10/06 접수'], tickets: [] }),
     row({ id: '7', received_at: '2026-10-07T00:00:00.000Z', status: 'deploy', timeline: ['10/07 수정 완료'], tickets: [] }),
     row({ id: '8', received_at: '2026-10-08T00:00:00.000Z', status: 'unknown', status_note: '로그 없음', timeline: [], tickets: [] }),
+    row({ id: '9', received_at: '2026-10-09T00:00:00.000Z', status: 'waiting', timeline: [], tickets: ['NRF-9'], assignee: '오민식', ticket_assignee: '김개발' }),
   ];
   assertEquals(unresolvedLines(rows), [
     '**com 81838 / user 119607** — 로그인 실패 · 로그 대기 · NRF-1',
@@ -132,6 +135,7 @@ Deno.test('unresolvedLines: done 제외, 메모 → 마지막 타임라인 → �
     '**com 81838 / user 119607** — 로그인 실패 · 지연(개발 일정)',
     '**com 81838 / user 119607** — 로그인 실패 · 배포대기',
     '**com 81838 / user 119607** — 로그인 실패 · 원인 미확인(로그 없음)',
+    '**com 81838 / user 119607** — 로그인 실패 · 대기 · NRF-9 · 담당 오민식(티켓 김개발)',
   ]);
 });
 

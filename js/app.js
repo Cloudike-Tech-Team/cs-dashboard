@@ -170,6 +170,7 @@
     renderSidebar();
     renderList();
     renderDetail();
+    renderNameList();
   }
 
   // 한 달에 1000건이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
@@ -221,6 +222,7 @@
     const f = state.filter;
     if (!f) return '';
     if (f.type === 'device') return f.value;
+    if (f.type === 'assignee') return f.value ? `담당 ${f.value}` : '담당 미지정';
     const issue = (state.summary && state.summary.issues || [])[f.value];
     return issue ? issue.label : '';
   }
@@ -233,7 +235,8 @@
         el('span', { class: 'muted', text: `${p.hour}:${p.minute}` })),
       el('span', { class: 'col-who' },
         el('b', { class: 'mono', text: r.customer }),
-        el('span', { class: 'muted small', text: deviceLine(r) })),
+        el('span', { class: 'muted small', text: deviceLine(r) }),
+        el('span', { class: 'small' + (r.assignee ? '' : ' muted'), text: L.assigneeLine(r) })),
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
         r.description ? el('span', { class: 'row-desc', text: r.description }) : null,
@@ -282,6 +285,10 @@
     $('detail-device').textContent = deviceLine(r);
     $('detail-received').textContent = fmtDateTime(r.received_at);
     $('detail-reporter').textContent = r.reporter;
+    $('detail-assignee').textContent = r.assignee || '미지정';
+    $('detail-assignee').className = r.assignee ? '' : 'muted';
+    $('detail-ticket-assignee').textContent = r.ticket_assignee || (r.tickets.length ? '미지정' : '—');
+    $('detail-ticket-assignee').className = r.ticket_assignee ? '' : 'muted';
     $('detail-tickets').replaceChildren(...(r.tickets.length ? r.tickets.map(ticketNode) : [el('span', { class: 'muted small', text: '없음' })]));
     $('detail-desc').textContent = r.description || '—';
     $('detail-history').replaceChildren(...(r.timeline.length
@@ -297,7 +304,7 @@
   function renderQuick(r) {
     const box = $('quick-box');
     box.replaceChildren();
-    ['status-btn', 'history-btn', 'edit-btn'].forEach((id) => { $(id).disabled = !!state.quick || state.busy; });
+    ['status-btn', 'history-btn', 'assignee-btn', 'edit-btn'].forEach((id) => { $(id).disabled = !!state.quick || state.busy; });
     if (state.quick === 'status') {
       const sel = el('select', { 'aria-label': '상태' },
         Object.entries(L.STATUS).map(([k, v]) => el('option', { value: k, text: v.label })));
@@ -323,6 +330,15 @@
       box.append(el('div', { class: 'quick-form' }, input, quickButtons(submit)));
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
+    } else if (state.quick === 'assignee') {
+      const a = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '담당자 (개발팀)' });
+      a.value = r.assignee || '';
+      const t = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '티켓 담당 (비우면 담당자와 같음)' });
+      t.value = r.ticket_assignee || '';
+      const submit = () => saveQuick(r, { assignee: a.value.trim(), ticket_assignee: t.value.trim() });
+      [a, t].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } }));
+      box.append(el('div', { class: 'quick-form' }, a, t, quickButtons(submit)));
+      a.focus();
     }
   }
 
@@ -355,11 +371,13 @@
     if (idx >= 0) state.rows[idx] = data[0];
     state.quick = null;
     toast('저장했습니다.');
+    rememberNames([data[0].assignee, data[0].ticket_assignee]);
     renderAll();
   }
 
   $('status-btn').addEventListener('click', () => { state.quick = 'status'; renderDetail(); });
   $('history-btn').addEventListener('click', () => { state.quick = 'history'; renderDetail(); });
+  $('assignee-btn').addEventListener('click', () => { state.quick = 'assignee'; renderDetail(); });
   $('edit-btn').addEventListener('click', () => { const r = selectedRow(); if (r) openDialog(r); });
   $('detail-close').addEventListener('click', () => { state.selected = null; state.quick = null; renderList(); renderDetail(); });
 
@@ -432,6 +450,26 @@
       return b;
     }));
 
+    // 담당자별 (빈 값은 "미지정"으로 묶어 맨 끝에)
+    const asgBox = $('assignee-list');
+    const asg = countBy(state.rows.map((r) => ({ a: r.assignee || '' })), 'a')
+      .map(([k, n]) => [k === '(없음)' ? '' : k, n]);
+    const unassigned = asg.find(([k]) => k === '');
+    const named = asg.filter(([k]) => k !== '');
+    const asgRows = unassigned ? [...named, unassigned] : named;
+    const asgMax = asgRows.length ? Math.max(...asgRows.map(([, n]) => n)) : 0;
+    if (!asgRows.length) asgBox.replaceChildren(el('p', { class: 'side-empty', text: '이 달에 접수된 CS가 없습니다.' }));
+    else asgBox.replaceChildren(...asgRows.map(([a, n]) => {
+      const fill = el('span');
+      fill.style.width = `${Math.round((n / asgMax) * 100)}%`;
+      const b = el('button', { type: 'button', class: 'device-btn' + (isActive('assignee', a) ? ' active' : '') },
+        el('span', { class: 'lbl' + (a ? '' : ' muted'), text: a || '미지정' }),
+        el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
+        el('b', { text: String(n) }));
+      b.addEventListener('click', () => toggleFilter('assignee', a));
+      return b;
+    }));
+
     // 특이사항
     const notesBox = $('notes-list');
     const notes = s ? s.notes || [] : [];
@@ -495,6 +533,8 @@
       f.title.value = row.title;
       f.status.value = row.status;
       f.status_note.value = row.status_note;
+      f.assignee.value = row.assignee || '';
+      f.ticket_assignee.value = row.ticket_assignee || '';
       f.description.value = row.description;
       f.notes.value = row.notes;
       row.timeline.forEach((v) => addListItem('timeline', v));
@@ -541,6 +581,8 @@
       title: f.title.value.trim(),
       status: f.status.value,
       status_note: f.status_note.value.trim(),
+      assignee: f.assignee.value.trim(),
+      ticket_assignee: f.ticket_assignee.value.trim(),
       description: f.description.value.trim(),
       notes: f.notes.value.trim(),
       timeline: listValues('timeline'),
@@ -580,6 +622,7 @@
     if (res.data.length === 0) { showError($('form-error'), CONFLICT_MSG); return; }
 
     try { localStorage.setItem(LS_REPORTER, payload.reporter); } catch { /* 무시 */ }
+    rememberNames([payload.assignee, payload.ticket_assignee]);
     dialog.close();
     toast(target ? '수정했습니다.' : '등록했습니다.');
     // 저장한 CS 가 있는 달로 이동하고, 그 CS 를 상세에 연다
@@ -645,6 +688,7 @@
     if (p.reporter) f.reporter.value = p.reporter;
     if (p.customer) f.customer.value = p.customer;
     f.title.value = p.title || '';
+    f.assignee.value = p.assignee || '';
     const dt = parsedDateToInput(p.received_at);
     if (dt) f.received_at.value = dt;
     f.device.value = p.device && DEVICES.includes(p.device) ? p.device : '';
@@ -658,6 +702,7 @@
     if (!tl.length) addListItem('timeline');
     const hints = [];
     if (tl.length) hints.push(`처리 이력: 댓글 ${tl.length}개를 옮겼음, 순서·날짜 확인`);
+    if (p.assignee) hints.push(`담당자: ${p.assignee}로 읽음, 확인 필요`);
     if (!p.received_at) hints.push('날짜: 메시지에 없어 현재 시각 유지');
     else if (/^\d{2}:\d{2}$/.test(p.received_at)) hints.push('날짜: 메시지에 날짜가 없어 오늘로 설정');
     if (!p.device) hints.push('기기: 판단 불가, 직접 선택 필요');
@@ -738,10 +783,10 @@
     if (state.loading) return;
     if ($('list-error').textContent) { toast('목록을 불러오지 못해 내보낼 수 없습니다.'); return; }
     if (!state.rows.length) { toast('내보낼 CS가 없습니다.'); return; }
-    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', '상태', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
+    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', '상태', '담당자', '티켓 담당', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
     const lines = [header, ...state.rows.map((r) => [
       fmtDateTime(r.received_at), r.reporter, r.customer, r.device, r.version,
-      r.title, L.statusLabel(r),
+      r.title, L.statusLabel(r), r.assignee, r.ticket_assignee,
       r.description, r.notes, r.timeline.join('\n'), r.tickets.join('\n'),
       fmtDateTime(r.created_at), fmtDateTime(r.updated_at),
     ])].map((cols) => cols.map(csvCell).join(','));
@@ -752,6 +797,24 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  // ───────────── 담당자 이름 제안 (datalist) ─────────────
+  // 이번 달 행에 나온 이름 + 이 브라우저에서 입력한 이름. 고정 명단 없이 오타만 줄인다.
+  const LS_NAMES = 'cs.assigneeNames';
+  function rememberNames(names) {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(LS_NAMES) || '[]'); } catch { /* 무시 */ }
+    const next = [...new Set([...names.filter(Boolean), ...saved])].slice(0, 50);
+    try { localStorage.setItem(LS_NAMES, JSON.stringify(next)); } catch { /* 무시 */ }
+    renderNameList();
+  }
+  function renderNameList() {
+    let saved = [];
+    try { saved = JSON.parse(localStorage.getItem(LS_NAMES) || '[]'); } catch { /* 무시 */ }
+    const fromRows = state.rows.flatMap((r) => [r.assignee, r.ticket_assignee]);
+    const names = [...new Set([...fromRows, ...saved].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+    $('assignee-names').replaceChildren(...names.map((n) => el('option', { value: n })));
   }
 
   // ───────────── 초기화 ─────────────

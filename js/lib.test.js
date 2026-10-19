@@ -5,7 +5,7 @@ const L = require('./lib.js');
 const row = (over = {}) => ({
   id: 'a', received_at: '2026-10-12T05:47:00.000Z', reporter: '정양훈', customer: 'com 831',
   device: '기타', version: '', title: '트래픽 초과', description: '반복 다운로드', notes: '',
-  timeline: [], tickets: [], status: 'open', status_note: '', ...over,
+  timeline: [], tickets: [], status: 'open', status_note: '', assignee: '', ticket_assignee: '', ...over,
 });
 
 test('statusLabel: 메모 우선, 없으면 기본 라벨', () => {
@@ -71,12 +71,28 @@ test('applyFilter', () => {
   assert.deepEqual(L.applyFilter(rows, { type: 'issue', value: 9 }, issues).map((r) => r.id), ['a', 'b']);
 });
 
+test('applyFilter: 담당자 필터, 빈 값은 미지정', () => {
+  const rows = [row({ id: 'a', assignee: '오민식' }), row({ id: 'b' }), row({ id: 'c', assignee: '오민식' })];
+  assert.deepEqual(L.applyFilter(rows, { type: 'assignee', value: '오민식' }, []).map((r) => r.id), ['a', 'c']);
+  assert.deepEqual(L.applyFilter(rows, { type: 'assignee', value: '' }, []).map((r) => r.id), ['b']);
+});
+
+test('assigneeLine: 담당·티켓 담당 표시', () => {
+  assert.equal(L.assigneeLine(row()), '담당 미지정');
+  assert.equal(L.assigneeLine(row({ assignee: '오민식' })), '담당 오민식');
+  assert.equal(L.assigneeLine(row({ assignee: '오민식', ticket_assignee: '김개발' })), '담당 오민식 · 티켓 김개발');
+  assert.equal(L.assigneeLine(row({ ticket_assignee: '김개발' })), '담당 미지정 · 티켓 김개발');
+  assert.equal(L.assigneeLine(row({ assignee: '오민식', ticket_assignee: '오민식' })), '담당 오민식');
+});
+
 test('matchesSearch: 제목·상태 라벨·티켓·타임라인까지, 대소문자 무시', () => {
   const r = row({ title: '웹에서 엑셀 열리지 않음', status_note: '로그 대기', tickets: ['NRF-5029'], timeline: ['10/12 PC 로그 요청'] });
   assert.equal(L.matchesSearch(r, '엑셀'), true);
   assert.equal(L.matchesSearch(r, '로그 대기'), true);
   assert.equal(L.matchesSearch(r, 'nrf-5029'), true);
   assert.equal(L.matchesSearch(r, 'pc 로그'), true);
+  assert.equal(L.matchesSearch(row({ assignee: '오민식' }), '민식'), true);
+  assert.equal(L.matchesSearch(row({ ticket_assignee: '김개발' }), '김개발'), true);
   assert.equal(L.matchesSearch(r, '없는말'), false);
   assert.equal(L.matchesSearch(r, ''), true);
 });

@@ -38,7 +38,7 @@ Dashboard → **SQL Editor** → `supabase/schema.sql` 내용 전체를 붙여�
 생성되는 것:
 | 객체 | 설명 |
 |---|---|
-| `cs_tickets` | CS 테이블. 제목·상태(`open/done/unknown`)·상태 메모 포함. 타임라인·티켓은 `text[]` 배열 |
+| `cs_tickets` | CS 테이블. 제목·상태·상태 메모·담당자(`assignee`)·티켓 담당(`ticket_assignee`) 포함. 타임라인·티켓은 `text[]` 배열 |
 | `cs_monthly_summaries` | 월간 요약. `content`(마크다운) + `issues`/`notes`(jsonb, 화면 필터용) |
 | `cs_tickets_stamp` 트리거 | `created_by / updated_by / updated_at` 자동 기록 |
 | RLS 정책 4개 | `authenticated` 역할만 select/insert/update/delete |
@@ -119,7 +119,8 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 | 상태 관리 | `처리 중 / 대기 / 지연 / 배포대기 / 완료 / 원인 미확인` + 상태 메모(예: 로그 대기). 상단 KPI의 "대기·미해결"은 `완료` 가 아닌 전부 |
 | 날짜 역순 정렬 | `received_at desc, created_at desc` |
 | 월별 보기 | ◀ ▶ 이번 달. 월 경계는 KST 기준 |
-| 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별 막대를 눌러 목록 필터. 검색어와 AND |
+| 담당자 | 개발팀 CS 담당자와 티켓 처리자를 CS마다 기록. 목록·상세·CSV·요약 미해결 줄에 표시, 상세 패널 「담당 변경」으로 바로 수정 |
+| 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별·담당자별 막대를 눌러 목록 필터. 검색어와 AND |
 | 월별 export | **CSV 내보내기** → `CS_YYYY-MM.csv` (해당 월 전체, BOM 포함) |
 | 리스트 입력 | 처리 타임라인·티켓은 `+ 추가` / `−`로 행 단위 입력. 타임라인 앞의 `10/12` 날짜는 상세에서 분리 표시 |
 

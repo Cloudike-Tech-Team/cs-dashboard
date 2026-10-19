@@ -53,7 +53,17 @@ export type Ticket = {
   notes: string;
   timeline: string[];
   tickets: string[];
+  assignee: string;         // 개발팀 CS 담당자
+  ticket_assignee: string;  // 티켓 처리 중인 사람
 };
+
+// "오민식(티켓 김개발)". 같은 사람이면 이름만, 둘 다 비면 "".
+export function assigneeText(r: Pick<Ticket, 'assignee' | 'ticket_assignee'>): string {
+  const a = r.assignee || '', t = r.ticket_assignee || '';
+  if (!a && !t) return '';
+  if (!a) return `(티켓 ${t})`;
+  return t && t !== a ? `${a}(티켓 ${t})` : a;
+}
 
 export const STATUS_LABEL: Record<Status, string> = {
   open: '처리 중', waiting: '대기', delayed: '지연', deploy: '배포대기', done: '완료', unknown: '원인 미확인',
@@ -93,7 +103,7 @@ export function buildSummaryInput(month: string, rows: Ticket[]): string {
   lines.push(`[집계] ${year}년 ${Number(mon)}월 · 총 ${rows.length}건 · ` +
     deviceCounts(rows).map(([d, n]) => `${d} ${n}`).join(' · '));
   lines.push('');
-  lines.push('[CS 목록] 번호. 날짜 | 고객사 | 기기 | 버전 | 제목 | 현상 | 특이사항 | 타임라인 | 티켓 | 상태');
+  lines.push('[CS 목록] 번호. 날짜 | 고객사 | 기기 | 버전 | 제목 | 현상 | 특이사항 | 타임라인 | 티켓 | 상태 | 담당');
   sortByReceived(rows).forEach((r, i) => {
     lines.push([
       `${i + 1}. ${kstDate(r.received_at)}`,
@@ -106,6 +116,7 @@ export function buildSummaryInput(month: string, rows: Ticket[]): string {
       r.timeline.map(oneLine).join(' → ') || '(없음)',
       r.tickets.join(', ') || '-',
       statusText(r),
+      assigneeText(r) || '-',
     ].join(' | '));
   });
   return lines.join('\n');
@@ -126,6 +137,7 @@ export type Parsed = {
   description: string;
   notes: string;
   timeline: string[];       // 댓글(스레드) → 처리 이력. "MM/DD 작성자: 내용" 한 줄씩, 시간순
+  assignee: string;         // 본문·댓글에서 지정된 개발팀 담당자. 없으면 ""
   confidence_notes: string;
 };
 
@@ -152,6 +164,7 @@ export function normalizeParsed(raw: unknown): Parsed {
     description: str(o.description),
     notes: str(o.notes),
     timeline,
+    assignee: str(o.assignee).slice(0, 100),
     confidence_notes: str(o.confidence_notes),
   };
 }
@@ -215,7 +228,8 @@ export function unresolvedLines(rows: Ticket[]): string[] {
       ? r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음')
       : statusText(r), 100);
     const tickets = r.tickets.length ? ` · ${clip(r.tickets.join(', '), 100)}` : '';
-    return `**${r.customer}** — ${what} · ${state}${tickets}`;
+    const who = assigneeText(r);
+    return `**${r.customer}** — ${what} · ${state}${tickets}${who ? ` · 담당 ${who}` : ''}`;
   });
 }
 

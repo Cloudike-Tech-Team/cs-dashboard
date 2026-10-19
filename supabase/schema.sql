@@ -20,7 +20,7 @@ create table if not exists public.cs_tickets (
   tickets      text[] not null default '{}',                                    -- 티켓
   title        text not null default '' check (char_length(title) <= 200),      -- 현상 제목
   status       text not null default 'open'
-                 check (status in ('open', 'done', 'unknown')),                 -- 처리 상태
+                 check (status in ('open', 'waiting', 'delayed', 'deploy', 'done', 'unknown')), -- 처리 상태
   status_note  text not null default '' check (char_length(status_note) <= 50), -- 상태 메모(예: 로그 대기)
   created_by   uuid references auth.users(id) on delete set null,
   updated_by   uuid references auth.users(id) on delete set null,
@@ -37,9 +37,15 @@ alter table public.cs_tickets
   add column if not exists title       text not null default ''
                                         check (char_length(title) <= 200),
   add column if not exists status      text not null default 'open'
-                                        check (status in ('open', 'done', 'unknown')),
+                                        check (status in ('open', 'waiting', 'delayed', 'deploy', 'done', 'unknown')),
   add column if not exists status_note text not null default ''
                                         check (char_length(status_note) <= 50);
+
+-- 상태 목록이 바뀌면 여기 제약과 js/lib.js 의 STATUS, functions/ai/lib.ts 의 Status 를 함께 바꾼다.
+-- (컬럼이 이미 있던 설치는 위 add column 이 건너뛰므로 제약을 다시 건다)
+alter table public.cs_tickets drop constraint if exists cs_tickets_status_check;
+alter table public.cs_tickets add constraint cs_tickets_status_check
+  check (status in ('open', 'waiting', 'delayed', 'deploy', 'done', 'unknown'));
 
 -- 기존 행 백필: 제목이 비어 있으면 현상설명 첫 줄.
 -- 감사 트리거를 잠시 끈다 (updated_by/updated_at 이 덮이지 않게, 열려 있는 수정 모달이 충돌 오류를 받지 않게).

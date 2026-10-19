@@ -7,8 +7,12 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
 
+  // 순서가 곧 select 의 표시 순서. 키는 DB check 제약(schema.sql)과 Edge Function(lib.ts)의 Status 와 같아야 한다.
   const STATUS = {
     open:    { label: '처리 중',     color: '#B45309' },
+    waiting: { label: '대기',        color: '#1D4ED8' },
+    delayed: { label: '지연',        color: '#B91C1C' },
+    deploy:  { label: '배포대기',    color: '#7C3AED' },
     done:    { label: '완료',        color: '#15803D' },
     unknown: { label: '원인 미확인', color: '#6B7280' },
   };

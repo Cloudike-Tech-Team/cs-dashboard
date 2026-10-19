@@ -37,7 +37,7 @@ export function monthRange(month: string): { from: string; to: string } {
   };
 }
 
-export type Status = 'open' | 'done' | 'unknown';
+export type Status = 'open' | 'waiting' | 'delayed' | 'deploy' | 'done' | 'unknown';
 
 export type Ticket = {
   id: string;
@@ -55,7 +55,9 @@ export type Ticket = {
   tickets: string[];
 };
 
-export const STATUS_LABEL: Record<Status, string> = { open: '처리 중', done: '완료', unknown: '원인 미확인' };
+export const STATUS_LABEL: Record<Status, string> = {
+  open: '처리 중', waiting: '대기', delayed: '지연', deploy: '배포대기', done: '완료', unknown: '원인 미확인',
+};
 
 // "처리 중(로그 대기)" 형태. 모델 입력과 마크다운에 공통 사용.
 export function statusText(r: Pick<Ticket, 'status' | 'status_note'>): string {
@@ -208,8 +210,10 @@ export function clip(s: string, n: number): string {
 export function unresolvedLines(rows: Ticket[]): string[] {
   return sortByReceived(rows).filter((r) => r.status !== 'done').map((r) => {
     const what = clip(oneLine(r.title) || oneLine(r.description) || '(내용 없음)', 80);
-    const state = clip(r.status === 'unknown' ? STATUS_LABEL.unknown
-      : r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음'), 100);
+    // 처리 중: 메모 → 마지막 타임라인. 그 외 상태(대기·지연·배포대기·원인 미확인): 상태 이름(메모).
+    const state = clip(r.status === 'open'
+      ? r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음')
+      : statusText(r), 100);
     const tickets = r.tickets.length ? ` · ${clip(r.tickets.join(', '), 100)}` : '';
     return `**${r.customer}** — ${what} · ${state}${tickets}`;
   });

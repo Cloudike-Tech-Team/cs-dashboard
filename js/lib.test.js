@@ -14,6 +14,14 @@ test('statusLabel: 메모 우선, 없으면 기본 라벨', () => {
   assert.equal(L.statusLabel(row({ status: 'done', status_note: '잔여 메모' })), '잔여 메모');
   assert.equal(L.statusLabel(row({ status: 'unknown' })), '원인 미확인');
   assert.equal(L.statusLabel(row({ status: 'weird' })), '처리 중');
+  assert.equal(L.statusLabel(row({ status: 'waiting' })), '대기');
+  assert.equal(L.statusLabel(row({ status: 'delayed' })), '지연');
+  assert.equal(L.statusLabel(row({ status: 'deploy' })), '배포대기');
+});
+
+test('STATUS: 순서는 처리 중 → 대기 → 지연 → 배포대기 → 완료 → 원인 미확인, 색은 서로 다름', () => {
+  assert.deepEqual(Object.keys(L.STATUS), ['open', 'waiting', 'delayed', 'deploy', 'done', 'unknown']);
+  assert.equal(new Set(Object.values(L.STATUS).map((s) => s.color)).size, 6);
 });
 
 test('statusColor', () => {
@@ -40,6 +48,7 @@ test('splitTimeline: 날짜가 아니면 그대로', () => {
 test('kpi', () => {
   const rows = [row(), row({ status: 'done', tickets: ['NRF-1'] }), row({ status: 'unknown', tickets: ['a', 'b'] })];
   assert.deepEqual(L.kpi(rows), { total: 3, open: 2, done: 1, ticketed: 2 });
+  assert.deepEqual(L.kpi([row({ status: 'waiting' }), row({ status: 'delayed' }), row({ status: 'deploy' })]).open, 3);
   assert.deepEqual(L.kpi([]), { total: 0, open: 0, done: 0, ticketed: 0 });
 });
 

@@ -116,7 +116,7 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 | 요구사항 | 구현 |
 |---|---|
 | 모든 CS 수정 가능 | 행 클릭 → 상세 패널. 「상태 변경」「이력 추가」는 패널에서 바로, 나머지는 「수정」 모달. 동시 수정 충돌 시 경고(낙관적 잠금) |
-| 상태 관리 | `처리 중 / 완료 / 원인 미확인` + 상태 메모(예: 로그 대기). 상단 KPI(접수·대기·완료·연결 티켓)에 집계 |
+| 상태 관리 | `처리 중 / 대기 / 지연 / 배포대기 / 완료 / 원인 미확인` + 상태 메모(예: 로그 대기). 상단 KPI의 "대기·미해결"은 `완료` 가 아닌 전부 |
 | 날짜 역순 정렬 | `received_at desc, created_at desc` |
 | 월별 보기 | ◀ ▶ 이번 달. 월 경계는 KST 기준 |
 | 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별 막대를 눌러 목록 필터. 검색어와 AND |
@@ -132,6 +132,7 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
   alter table public.cs_tickets add constraint cs_tickets_device_check
     check (device in ('웹','CLDAstream Win','CLDAstream MAC','PC client Win','PC client MAC','Android','IOS','새기기'));
   ```
+- 상태 목록을 바꾸려면 `js/lib.js`의 `STATUS`, `supabase/functions/ai/lib.ts`의 `Status`/`STATUS_LABEL`, `schema.sql`의 `cs_tickets_status_check` 제약을 **셋 다** 바꾸고 스키마 재실행·함수 재배포.
 - 회사 계정만 허용하려면 `schema.sql`의 정책 조건을 `(auth.jwt() ->> 'email') like '%@cloudike.io'`로 바꾸세요.
 
 ## AI 기능 (슬랙 메시지 자동 입력 · 월간 요약)

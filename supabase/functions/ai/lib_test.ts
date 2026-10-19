@@ -59,6 +59,9 @@ Deno.test('statusText', () => {
   assertEquals(statusText(row()), '처리 중');
   assertEquals(statusText(row({ status: 'open', status_note: '로그 대기' })), '처리 중(로그 대기)');
   assertEquals(statusText(row({ status: 'done' })), '완료');
+  assertEquals(statusText(row({ status: 'waiting' })), '대기');
+  assertEquals(statusText(row({ status: 'delayed', status_note: '개발 일정' })), '지연(개발 일정)');
+  assertEquals(statusText(row({ status: 'deploy' })), '배포대기');
 });
 
 Deno.test('normalizeParsed: 잘못된 기기·날짜는 null, 공백 정리', () => {
@@ -117,12 +120,18 @@ Deno.test('unresolvedLines: done 제외, 메모 → 마지막 타임라인 → �
     row({ id: '3', received_at: '2026-10-03T00:00:00.000Z', status: 'open', timeline: ['10/02 접수', '10/03 개발팀 전달'], tickets: [] }),
     row({ id: '4', received_at: '2026-10-04T00:00:00.000Z', status: 'unknown', timeline: [], tickets: [], title: '', description: '설명만 있음' }),
     row({ id: '5', received_at: '2026-10-05T00:00:00.000Z', status: 'open', timeline: [], tickets: [], title: '', description: '' }),
+    row({ id: '6', received_at: '2026-10-06T00:00:00.000Z', status: 'delayed', status_note: '개발 일정', timeline: ['10/06 접수'], tickets: [] }),
+    row({ id: '7', received_at: '2026-10-07T00:00:00.000Z', status: 'deploy', timeline: ['10/07 수정 완료'], tickets: [] }),
+    row({ id: '8', received_at: '2026-10-08T00:00:00.000Z', status: 'unknown', status_note: '로그 없음', timeline: [], tickets: [] }),
   ];
   assertEquals(unresolvedLines(rows), [
     '**com 81838 / user 119607** — 로그인 실패 · 로그 대기 · NRF-1',
     '**com 81838 / user 119607** — 로그인 실패 · 10/03 개발팀 전달',
     '**com 81838 / user 119607** — 설명만 있음 · 원인 미확인',
     '**com 81838 / user 119607** — (내용 없음) · 조치 이력 없음',
+    '**com 81838 / user 119607** — 로그인 실패 · 지연(개발 일정)',
+    '**com 81838 / user 119607** — 로그인 실패 · 배포대기',
+    '**com 81838 / user 119607** — 로그인 실패 · 원인 미확인(로그 없음)',
   ]);
 });
 

@@ -13,7 +13,7 @@ export const MODEL = 'claude-sonnet-5-5';
 export const PARSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['reporter', 'customer', 'title', 'received_at', 'device', 'version', 'description', 'notes', 'confidence_notes'],
+  required: ['reporter', 'customer', 'title', 'received_at', 'device', 'version', 'description', 'notes', 'timeline', 'confidence_notes'],
   properties: {
     reporter: { type: ['string', 'null'], description: '메시지 작성자 이름. 괄호 앞 한글 이름만.' },
     customer: { type: ['string', 'null'], description: '"com 81838 / user 119607" 형식. user 없으면 "com 9163".' },
@@ -26,11 +26,21 @@ export const PARSE_SCHEMA = {
     version: { type: 'string', description: '버전 번호만. 없으면 빈 문자열.' },
     description: { type: 'string', description: '고객이 겪는 현상 2~4문장. 오류 메시지는 원문 인용.' },
     notes: { type: 'string', description: '첨부파일명, 이미 시도한 조치, 요청사항, 멘션 등 현상 외 정보. 없으면 빈 문자열.' },
+    timeline: {
+      type: 'array',
+      items: { type: 'string' },
+      description: '첫 메시지 아래의 댓글(스레드 답글)을 시간순으로 한 줄씩. "MM/DD 작성자: 내용" 형식. 댓글이 없으면 빈 배열.',
+    },
     confidence_notes: { type: 'string', description: '추측한 항목과 이유. 없으면 빈 문자열.' },
   },
 } as const;
 
 export const PARSE_SYSTEM = `당신은 Cloudike CS 담당자가 슬랙에 올린 문의 메시지를 CS 대시보드 등록 폼에 맞게 구조화하는 도우미입니다. 주어진 JSON 스키마에 맞춰서만 답합니다.
+
+입력 구조:
+- 붙여넣은 텍스트는 슬랙 메시지 하나와 그 아래 달린 댓글(스레드 답글)들입니다. 슬랙에서 복사하면 보통 "작성자  시각" 줄 다음에 본문이 오고, "N개의 댓글" 같은 줄 뒤에 댓글들이 같은 "작성자  시각 / 내용" 모양으로 이어집니다.
+- **첫 메시지(본문)만** reporter·customer·title·received_at·device·version·description·notes 의 근거로 씁니다.
+- **댓글은 전부 timeline 으로** 보냅니다. 댓글 내용을 description 이나 notes 에 섞지 않습니다. 댓글에서 밝혀진 원인·조치·결과도 timeline 에만 적습니다.
 
 필드 규칙:
 - reporter: 메시지 작성자 이름. "오민식(Minsik.O)" 처럼 괄호가 있으면 괄호 앞 한글 이름만. 작성자를 알 수 없으면 null.
@@ -49,6 +59,7 @@ export const PARSE_SYSTEM = `당신은 Cloudike CS 담당자가 슬랙에 올린
 - version: 버전 번호(예: 3.19.61)만. 없으면 "".
 - description: 고객이 겪는 현상을 2~4문장으로. 오류 메시지 원문은 그대로 인용. 파일 경로·크기 같은 구체 정보는 유지. 제목(title)과 같은 문장을 반복하지 않습니다.
 - notes: 첨부파일명, 이미 시도한 조치(예: "비밀번호 재변경 후에도 동일"), 요청사항(예: "월결제→연결제 변경 요청"), 담당자 멘션 등 현상 외 정보. 없으면 "".
+- timeline: 댓글 하나당 한 줄, 위에서 아래 순서(시간순) 그대로. 형식은 "MM/DD 작성자: 내용 요약". 작성자는 괄호 앞 한글 이름. 내용은 한 문장으로 줄이되 요청·확인·조치·결과(예: "PC 로그 요청", "계정 비활성화가 원인으로 확인, 재활성화 완료")와 티켓 번호는 유지. 댓글에 날짜가 없고 시각만 있으면 본문 날짜(또는 가장 최근 날짜 구분선)를 쓰고, 날짜 구분선("10월 13일")이 중간에 나오면 그 뒤 댓글은 그 날짜를 씁니다. 날짜를 전혀 알 수 없으면 "MM/DD " 없이 "작성자: 내용"만. 댓글이 없으면 [].
 - confidence_notes: 추측한 항목과 그 이유. 사용자가 검토할 때 참고용. 없으면 "".
 
 슬랙 UI 잔여물("6개의 댓글", "삭제된 메시지입니다", 파일 크기 표시 등)은 무시합니다.

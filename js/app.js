@@ -651,7 +651,13 @@
     f.version.value = p.version || '';
     f.description.value = p.description || '';
     f.notes.value = p.notes || '';
+    // 댓글 → 처리 이력. 기존 입력칸은 비우고 순서대로 채운다 (붙여넣기는 새 CS 흐름에서만 쓰임)
+    const tl = Array.isArray(p.timeline) ? p.timeline : [];
+    form.querySelector('[data-list="timeline"]').replaceChildren();
+    tl.forEach((t) => addListItem('timeline', t));
+    if (!tl.length) addListItem('timeline');
     const hints = [];
+    if (tl.length) hints.push(`처리 이력: 댓글 ${tl.length}개를 옮겼음, 순서·날짜 확인`);
     if (!p.received_at) hints.push('날짜: 메시지에 없어 현재 시각 유지');
     else if (/^\d{2}:\d{2}$/.test(p.received_at)) hints.push('날짜: 메시지에 날짜가 없어 오늘로 설정');
     if (!p.device) hints.push('기기: 판단 불가, 직접 선택 필요');

@@ -123,6 +123,7 @@ export type Parsed = {
   version: string;
   description: string;
   notes: string;
+  timeline: string[];       // 댓글(스레드) → 처리 이력. "MM/DD 작성자: 내용" 한 줄씩, 시간순
   confidence_notes: string;
 };
 
@@ -134,6 +135,11 @@ export function normalizeParsed(raw: unknown): Parsed {
   const device = (DEVICES as readonly string[]).includes(o.device as string) ? (o.device as Device) : null;
   let received_at = strOrNull(o.received_at);
   if (received_at && !/^(\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}$/.test(received_at)) received_at = null;
+  const timeline = (Array.isArray(o.timeline) ? o.timeline : [])
+    .filter((t): t is string => typeof t === 'string')
+    .map((t) => t.trim().slice(0, 2000))
+    .filter(Boolean)
+    .slice(0, 50);
   return {
     reporter: strOrNull(o.reporter),
     customer: strOrNull(o.customer),
@@ -143,6 +149,7 @@ export function normalizeParsed(raw: unknown): Parsed {
     version: str(o.version),
     description: str(o.description),
     notes: str(o.notes),
+    timeline,
     confidence_notes: str(o.confidence_notes),
   };
 }

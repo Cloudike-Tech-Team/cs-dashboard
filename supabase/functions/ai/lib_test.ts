@@ -68,13 +68,24 @@ Deno.test('normalizeParsed: 잘못된 기기·날짜는 null, 공백 정리', ()
   });
   assertEquals(p, {
     reporter: '정양훈', customer: null, title: '로그인 안 됨', received_at: '14:47', device: null,
-    version: '3.19.61', description: 'x', notes: '', confidence_notes: '',
+    version: '3.19.61', description: 'x', notes: '', timeline: [], confidence_notes: '',
   });
   assertEquals(normalizeParsed({ received_at: '2026-10-12T14:47' }).received_at, '2026-10-12T14:47');
   assertEquals(normalizeParsed({ received_at: '어제' }).received_at, null);
   assertEquals(normalizeParsed({ device: 'IOS' }).device, 'IOS');
   assertEquals(normalizeParsed(null).version, '');
   assertEquals(normalizeParsed({}).title, '');
+});
+
+Deno.test('normalizeParsed: timeline 은 문자열만, 공백·빈 항목 제거, 순서 유지, 2000자·50개 제한', () => {
+  const p = normalizeParsed({ timeline: [' 10/12 정양훈: 로그 요청 ', '', 3, null, '10/13 로그 수신', 'x'.repeat(2500)] });
+  assertEquals(p.timeline.length, 3);
+  assertEquals(p.timeline[0], '10/12 정양훈: 로그 요청');
+  assertEquals(p.timeline[1], '10/13 로그 수신');
+  assertEquals(p.timeline[2].length, 2000);
+  assertEquals(normalizeParsed({ timeline: Array(60).fill('a') }).timeline.length, 50);
+  assertEquals(normalizeParsed({ timeline: 'not array' }).timeline, []);
+  assertEquals(normalizeParsed({}).timeline, []);
 });
 
 Deno.test('normalizeSummary: 타입 방어, 5개 제한, 빈 특이사항 제거', () => {

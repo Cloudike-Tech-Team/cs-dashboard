@@ -84,16 +84,15 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .search input { font-size: 12px; height: 32px; width: 220px; padding: 0 10px 0 28px; }
 
 .kpis { border-bottom: 1px solid var(--line); display: flex; align-items: stretch; }
-.kpi { background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px; justify-content: center; border-right: 1px solid var(--line); }
-.kpi-spacer { flex: 1; background: var(--panel-2); border-right: 1px solid var(--line); }
-.kpi-tickets { border-right: 0; min-width: 220px; }
+.kpi { background: #FFFFFF; padding: 14px 24px; display: flex; flex-direction: column; gap: 4px; justify-content: center; border-right: 1px solid var(--line); flex: 1 1 0; min-width: 0; }
+.kpi-tickets { border-right: 0; border-left: 3px double var(--line); background: var(--panel-2); }
 .kpi-of { font-size: 14px; font-weight: 500; }
-.meter { display: block; height: 4px; width: 160px; background: var(--bar); margin-top: 6px; }
+.meter { display: block; height: 4px; width: 100%; max-width: 320px; background: var(--bar); margin-top: 6px; }
 .meter > span { display: block; height: 100%; background: var(--text); transition: width .25s; }
 .kpi-label { font-size: 11px; font-weight: 500; color: var(--muted); letter-spacing: .04em; }
 .kpi-value { font-size: 26px; font-weight: 600; line-height: 1; }
 .kpi-sub { font-size: 11px; margin-top: 2px; }
-.kpi-donut { flex-direction: row; align-items: center; gap: 18px; padding: 12px 24px; min-width: 380px; }
+.kpi-donut { flex-direction: row; align-items: center; gap: 18px; padding: 12px 24px; flex: 1.6 1 0; }
 .ring { width: 72px; height: 72px; flex: none; transform: rotate(-90deg); }
 .ring-track { fill: none; stroke: var(--bar); stroke-width: 4; }
 .ring-seg { fill: none; stroke-width: 4; transition: stroke-dasharray .25s; }
@@ -242,7 +241,7 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
   .col-who { grid-column: 2; }
   .col-what { grid-column: 2; grid-row: 2; }
   .col-device { display: none; }
-  .kpis { flex-wrap: wrap; } .kpi-spacer { display: none; } .kpi-donut { min-width: 0; flex: 1 1 100%; }
+  .kpis { flex-wrap: wrap; } .kpi-donut { flex: 1 1 100%; } .kpi-tickets { border-left: 0; }
 }
 @media (max-width: 640px) {
   .topbar, .toolbar, .kpi { padding-left: 16px; padding-right: 16px; }

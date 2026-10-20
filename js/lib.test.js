@@ -96,3 +96,9 @@ test('matchesSearch: 제목·상태 라벨·티켓·타임라인까지, 대소�
   assert.equal(L.matchesSearch(r, '없는말'), false);
   assert.equal(L.matchesSearch(r, ''), true);
 });
+
+test('applyFilter status', () => {
+  const rows = [row({ id: 1, status: 'done' }), row({ id: 2, status: 'open' }), row({ id: 3, status: 'bogus' })];
+  assert.deepEqual(L.applyFilter(rows, { type: 'status', value: 'done' }, []).map((r) => r.id), [1]);
+  assert.deepEqual(L.applyFilter(rows, { type: 'status', value: 'open' }, []).map((r) => r.id), [2, 3]);
+});

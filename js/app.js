@@ -29,7 +29,7 @@
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
     summaryBusyMonth: null,    // 생성 중인 월 ('YYYY-MM'). 다른 달을 보고 있으면 "생성 중" 을 표시하지 않음
-    filter: null,              // null | { type: 'issue', value: index } | { type: 'device', value: device }
+    filter: null,              // null | { type: 'issue'|'device'|'assignee'|'status', value }
     selected: null,            // 상세 패널에 열린 row id
     quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
   };
@@ -222,26 +222,27 @@
     const f = state.filter;
     if (!f) return '';
     if (f.type === 'device') return f.value;
+    if (f.type === 'status') return L.STATUS[f.value] ? L.STATUS[f.value].label : f.value;
     if (f.type === 'assignee') return f.value ? `담당 ${f.value}` : '담당 미지정';
     const issue = (state.summary && state.summary.issues || [])[f.value];
     return issue ? issue.label : '';
   }
 
+  function initial(name) { return (name || '').trim().slice(0, 1) || '–'; }
+
+  // 한 줄 행: 날짜 | 고객사 | 제목(유일한 강조) | 기기 | 담당 이니셜 | 상태. 시각·유저 ID·티켓은 상세에서.
   function rowNode(r) {
     const p = kstParts(new Date(r.received_at));
     const b = el('button', { type: 'button', class: 'cs-row' + (state.selected === r.id ? ' active' : '') },
-      el('span', { class: 'col-when mono' },
-        el('b', { text: `${p.month}-${p.day} ${WEEKDAY_KO[p.weekday] || p.weekday}` }),
-        el('span', { class: 'muted', text: `${p.hour}:${p.minute}` })),
-      el('span', { class: 'col-who' },
-        el('b', { class: 'mono', text: r.customer }),
-        el('span', { class: 'muted small', text: deviceLine(r) }),
-        el('span', { class: 'small' + (r.assignee ? '' : ' muted'), text: L.assigneeLine(r) })),
+      el('span', { class: 'col-when mono', text: `${p.month}-${p.day}`, title: `${p.hour}:${p.minute} (${WEEKDAY_KO[p.weekday] || p.weekday})` }),
+      el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
-        r.description ? el('span', { class: 'row-desc', text: r.description }) : null,
-        r.tickets.length ? el('span', { class: 'ticket-chips' }, r.tickets.map(ticketChip)) : null),
-      el('span', { class: 'col-status' }, el('span', { class: 'dot' }), el('span', { text: L.statusLabel(r) })),
+        r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
+      el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
+      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: initial(r.assignee), title: L.assigneeLine(r) }),
+      // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
+      el('span', { class: 'col-status', title: r.status_note || '' }, el('span', { class: 'dot' }), el('span', { text: L.STATUS[r.status] ? L.STATUS[r.status].label : L.statusLabel(r) })),
     );
     b.style.setProperty('--c', L.statusColor(r));
     b.addEventListener('click', () => selectRow(r.id));
@@ -386,13 +387,43 @@
     const k = L.kpi(state.rows);
     $('kpi-total').textContent = String(k.total);
     $('kpi-open').textContent = String(k.open);
-    $('kpi-done').textContent = String(k.done);
+    $('kpi-open-sub').textContent = k.total ? `전체의 ${Math.round((k.open / k.total) * 100)}%` : '';
     $('kpi-ticketed').textContent = String(k.ticketed);
+    $('kpi-ticketed-of').textContent = `/ ${k.total}`;
+    $('kpi-ticketed-sub').textContent = k.total ? `${k.total - k.ticketed}건은 티켓 없음` : '';
+    $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
+
+    // 상태별 도넛 + 범례(누르면 상태 필터). 0건인 상태는 그리지 않는다
+    const C = 2 * Math.PI * 15.5;
+    const counts = Object.keys(L.STATUS).map((key) => [key, state.rows.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === key).length]).filter(([, n]) => n > 0);
+    const statusFilter = state.filter && state.filter.type === 'status' ? state.filter.value : null;
+    const svgNS = 'http://www.w3.org/2000/svg';
+    let offset = 0;
+    const segs = counts.map(([key, n]) => {
+      const len = (n / k.total) * C;
+      const c = document.createElementNS(svgNS, 'circle');
+      c.setAttribute('class', 'ring-seg' + (statusFilter && statusFilter !== key ? ' dim' : ''));
+      c.setAttribute('cx', '18'); c.setAttribute('cy', '18'); c.setAttribute('r', '15.5');
+      c.setAttribute('stroke', L.STATUS[key].color);
+      c.setAttribute('stroke-dasharray', `${Math.max(len - 0.6, 0)} ${C - Math.max(len - 0.6, 0)}`);   // 조각 사이 틈
+      c.setAttribute('stroke-dashoffset', String(-offset));
+      offset += len;
+      return c;
+    });
+    $('kpi-ring-segs').replaceChildren(...segs);
+    $('kpi-legend').replaceChildren(...counts.map(([key, n]) => {
+      const b = el('button', { type: 'button', class: 'legend-btn' + (isActive('status', key) ? ' active' : '') },
+        el('span', { class: 'dot' }), el('span', { text: L.STATUS[key].label }), el('b', { text: String(n) }));
+      b.style.setProperty('--c', L.STATUS[key].color);
+      b.addEventListener('click', () => toggleFilter('status', key));
+      return b;
+    }));
   }
 
   function isActive(type, value) { return !!state.filter && state.filter.type === type && state.filter.value === value; }
   function toggleFilter(type, value) {
     state.filter = isActive(type, value) ? null : { type, value };
+    renderKpi();
     renderSidebar();
     renderList();
   }
@@ -424,10 +455,10 @@
     if (!s) issueBox.replaceChildren(el('p', { class: 'side-empty', text: '요약을 생성하면 주요 이슈가 표시됩니다.' }));
     else if (!issues.length) issueBox.replaceChildren(el('p', { class: 'side-empty', text: '이전 형식의 요약입니다. 재생성하면 주요 이슈가 표시됩니다.' }));
     else issueBox.replaceChildren(...issues.map((is, i) => {
-      const b = el('button', { type: 'button', class: 'issue-btn' + (isActive('issue', i) ? ' active' : '') },
+      // 라벨 + 건수만. 설명은 툴팁으로 내려 사이드바를 짧게 유지한다
+      const b = el('button', { type: 'button', class: 'issue-btn' + (isActive('issue', i) ? ' active' : ''), title: is.detail || '' },
         el('span', { class: 'issue-head' }, el('span', { class: 'swatch' }), el('span', { class: 'issue-label', text: is.label })),
-        el('b', { text: String(is.count) }),
-        is.detail ? el('span', { class: 'issue-detail', text: is.detail }) : null);
+        el('b', { text: String(is.count) }));
       b.style.setProperty('--c', L.ISSUE_COLORS[i % L.ISSUE_COLORS.length]);
       b.disabled = is.count === 0;
       b.addEventListener('click', () => toggleFilter('issue', i));
@@ -473,11 +504,12 @@
     // 특이사항
     const notesBox = $('notes-list');
     const notes = s ? s.notes || [] : [];
+    $('notes-count').textContent = notes.length ? String(notes.length) : '';
     notesBox.replaceChildren(...(notes.length
       ? notes.map((n) => el('p', {}, n.customer ? el('span', { class: 'cust', text: n.customer }) : null, n.text))
       : [el('p', { class: 'muted', text: s ? '없음' : '—' })]));
   }
-  $('filter-clear').addEventListener('click', () => { state.filter = null; renderSidebar(); renderList(); });
+  $('filter-clear').addEventListener('click', () => { state.filter = null; renderKpi(); renderSidebar(); renderList(); });
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => { state.month = shiftMonth(state.month, -1); loadMonth(); });

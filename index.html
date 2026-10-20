@@ -58,10 +58,23 @@
     </div>
 
     <div class="kpis">
-      <div class="kpi"><span class="kpi-label">접수</span><span id="kpi-total" class="kpi-value mono">0</span></div>
-      <div class="kpi"><span class="kpi-label">대기 · 미해결</span><span id="kpi-open" class="kpi-value mono c-open">0</span></div>
-      <div class="kpi"><span class="kpi-label">완료</span><span id="kpi-done" class="kpi-value mono c-done">0</span></div>
-      <div class="kpi"><span class="kpi-label">연결 티켓</span><span id="kpi-ticketed" class="kpi-value mono">0</span></div>
+      <div class="kpi kpi-donut">
+        <svg id="kpi-ring" class="ring" viewBox="0 0 36 36" role="img" aria-labelledby="kpi-ring-title">
+          <title id="kpi-ring-title">상태별 접수 비율</title>
+          <circle class="ring-track" cx="18" cy="18" r="15.5"></circle>
+          <g id="kpi-ring-segs"></g>
+        </svg>
+        <div class="ring-center"><span id="kpi-total" class="kpi-value mono">0</span><span class="kpi-label">접수</span></div>
+        <div id="kpi-legend" class="ring-legend" aria-label="상태별 건수 · 눌러서 필터"></div>
+      </div>
+      <div class="kpi"><span class="kpi-label">미해결</span><span id="kpi-open" class="kpi-value mono c-open">0</span><span id="kpi-open-sub" class="kpi-sub muted"></span></div>
+      <div class="kpi-spacer" aria-hidden="true"></div>
+      <div class="kpi kpi-tickets">
+        <span class="kpi-label">티켓 연결</span>
+        <span class="kpi-value mono"><span id="kpi-ticketed">0</span> <span id="kpi-ticketed-of" class="kpi-of muted"></span></span>
+        <span class="meter" aria-hidden="true"><span id="kpi-ticketed-bar"></span></span>
+        <span id="kpi-ticketed-sub" class="kpi-sub muted"></span>
+      </div>
     </div>
 
     <div class="body">
@@ -91,18 +104,20 @@
         <div class="side-title"><h3>담당자별 · 눌러서 필터</h3></div>
         <div id="assignee-list" class="device-list"></div>
 
-        <div class="side-title bordered"><h3>특이사항</h3></div>
-        <div id="notes-list" class="notes-list"></div>
+        <details class="notes-box">
+          <summary class="side-title bordered"><h3>특이사항 <b id="notes-count" class="mono"></b></h3></summary>
+          <div id="notes-list" class="notes-list"></div>
+        </details>
       </aside>
 
       <!-- 목록 -->
       <section class="list" aria-label="CS 목록">
         <div class="panel-head">
           <strong id="list-title"></strong>
-          <span class="muted small">행을 누르면 상세가 열립니다</span>
+          <span class="muted small">행을 누르면 오른쪽에 상세가 열립니다</span>
         </div>
         <p id="list-error" class="error side-pad" hidden></p>
-        <div class="list-head"><span>접수</span><span>고객사</span><span>현상</span><span>상태</span></div>
+        <div class="list-head"><span>접수</span><span>고객사</span><span>현상</span><span>기기</span><span title="담당자">담당</span><span>상태</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
       </section>

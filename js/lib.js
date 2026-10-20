@@ -60,6 +60,7 @@
   function applyFilter(rows, filter, issues) {
     if (!filter) return rows;
     if (filter.type === 'device') return rows.filter((r) => r.device === filter.value);
+    if (filter.type === 'status') return rows.filter((r) => (STATUS[r.status] ? r.status : 'open') === filter.value);
     if (filter.type === 'assignee') return rows.filter((r) => (r.assignee || '') === filter.value);
     const issue = issues[filter.value];
     if (!issue) return rows;

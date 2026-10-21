@@ -228,19 +228,17 @@
     return issue ? issue.label : '';
   }
 
-  function initial(name) { return (name || '').trim().slice(0, 1) || '–'; }
-
-  // 한 줄 행: 날짜 | 고객사 | 제목(유일한 강조) | 기기 | 담당 이니셜 | 상태. 시각·유저 ID·티켓은 상세에서.
+  // 한 줄 행: 날짜 | 고객사 | 기기 | 제목(유일한 강조) | 담당 | 상태. 시각·유저 ID·티켓은 상세에서.
   function rowNode(r) {
     const p = kstParts(new Date(r.received_at));
     const b = el('button', { type: 'button', class: 'cs-row' + (state.selected === r.id ? ' active' : '') },
       el('span', { class: 'col-when mono', text: `${p.month}-${p.day}`, title: `${p.hour}:${p.minute} (${WEEKDAY_KO[p.weekday] || p.weekday})` }),
       el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
+      el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
-      el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
-      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: initial(r.assignee), title: L.assigneeLine(r) }),
+      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || '미지정', title: L.assigneeLine(r) }),
       // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
       el('span', { class: 'col-status', title: r.status_note || '' }, el('span', { class: 'dot' }), el('span', { text: L.STATUS[r.status] ? L.STATUS[r.status].label : L.statusLabel(r) })),
     );

@@ -1,6 +1,20 @@
 (() => {
   'use strict';
 
+  // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
+  // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
+  // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
+  const APP_VERSION = '20261027';
+  const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
+  if (htmlVersion !== APP_VERSION) {
+    let retried = false;
+    try { retried = sessionStorage.getItem('cs.versionReload') === APP_VERSION; sessionStorage.setItem('cs.versionReload', APP_VERSION); } catch { /* 무시 */ }
+    if (!retried) {
+      fetch(location.href, { cache: 'reload' }).catch(() => {}).finally(() => location.reload());
+      return;
+    }
+  }
+
   const DEVICES = ['웹', 'CLDAstream Win', 'CLDAstream MAC', 'PC client Win', 'PC client MAC', 'Android', 'IOS', '기타'];
   const TZ = 'Asia/Seoul';       // 월 경계·표시·입력 모두 KST 기준으로 통일
   const TZ_OFFSET = '+09:00';    // KST 는 서머타임이 없어 고정 오프셋으로 충분
@@ -32,6 +46,9 @@
     filter: null,              // null | { type: 'issue'|'device'|'assignee'|'status', value }
     selected: null,            // 상세 패널에 열린 row id
     quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
+    yt: {},                    // 트래커(YouTrack·Jira) 티켓 캐시 { 'NRF-1': { source, summary, state, resolved, assignees, url } | null(없음) }
+    ytBusy: 0,                 // 진행 중인 티켓 조회 요청 수
+    ytError: '',
   };
   const PAGE = 1000;           // PostgREST 기본 max-rows
 
@@ -163,7 +180,40 @@
     state.selected = opts.selected && state.rows.some((r) => r.id === opts.selected) ? opts.selected : null;
     renderAll();
     loadSummary(seq);
+    loadTickets({ refresh: true });
   }
+
+  // 이번 달 CS 에 연결된 티켓의 담당자·상태를 YouTrack·Jira 에서 읽어 온다 (Edge Function `tickets`. 표시 전용, DB 에 쓰지 않음).
+  // refresh: 캐시에 있어도 다시 읽음 (월 이동·새로고침 버튼). 아니면 처음 보는 ID 만.
+  async function loadTickets({ refresh = false } = {}) {
+    const ids = L.ticketIds(state.rows).filter((id) => refresh || !(id in state.yt));
+    if (!ids.length) { renderYtStatus(); return; }
+    state.ytBusy++;            // 월을 빠르게 넘기면 요청이 겹칠 수 있음. 결과는 ID 별로 합치므로 순서는 상관없다
+    renderYtStatus();
+    try {
+      const warnings = new Set();
+      for (let i = 0; i < ids.length; i += 300) {
+        const { tickets, missing, warnings: w = [] } = await callFn('tickets', { ids: ids.slice(i, i + 300) });
+        Object.assign(state.yt, tickets);
+        missing.forEach((id) => { state.yt[id] = null; });   // 트래커에 없는 ID 는 다시 묻지 않음
+        w.forEach((m) => warnings.add(m));                    // 한쪽 트래커만 실패한 경우 (토큰 미설정 등)
+      }
+      state.ytError = warnings.size ? '티켓 정보 일부를 불러오지 못했습니다: ' + [...warnings].join(' / ') : '';
+    } catch (e) {
+      state.ytError = '티켓 정보를 불러오지 못했습니다: ' + e.message;
+    }
+    state.ytBusy--;
+    renderYtStatus();
+    renderList();
+    renderDetail();
+  }
+
+  function renderYtStatus() {
+    showError($('tickets-error'), state.ytError);
+    $('tickets-refresh').disabled = state.ytBusy > 0;
+    $('tickets-refresh').textContent = state.ytBusy ? '티켓 불러오는 중…' : '티켓 새로고침';
+  }
+  $('tickets-refresh').addEventListener('click', () => loadTickets({ refresh: true }));
 
   function renderAll() {
     renderKpi();
@@ -201,7 +251,7 @@
   function filteredRows() {
     const q = $('search-input').value;
     const issues = state.summary ? state.summary.issues || [] : [];
-    return L.applyFilter(state.rows, state.filter, issues).filter((r) => L.matchesSearch(r, q));
+    return L.applyFilter(state.rows, state.filter, issues).filter((r) => L.matchesSearch(r, q, state.yt));
   }
 
   function deviceLine(r) { return r.version ? `${r.device} · v${r.version}` : r.device; }
@@ -218,6 +268,21 @@
       : el('span', { class: 'chip', text: t });
   }
 
+  // 상세의 티켓 한 줄: 칩(링크) · 상태 · 담당 · 제목
+  function ticketLine({ raw, id, yt }) {
+    if (!yt) {
+      const hint = !id ? '' : id in state.yt ? '트래커에 없음' : state.ytBusy ? '불러오는 중…' : '';
+      return el('div', { class: 'ticket-line' }, ticketNode(raw), hint ? el('span', { class: 'muted small', text: hint }) : null);
+    }
+    const st = el('span', { class: 'status-inline', text: yt.state || '상태 없음' });
+    st.style.setProperty('--c', L.ytStateColor(yt));
+    return el('div', { class: 'ticket-line', title: yt.summary },
+      isSafeUrl(raw) ? ticketNode(raw) : el('a', { class: 'chip', href: yt.url, target: '_blank', rel: 'noopener noreferrer', text: id }),
+      st,
+      el('span', { class: 'small' + (yt.assignees.length ? '' : ' muted'), text: yt.assignees.join(', ') || '담당 없음' }),
+      el('span', { class: 'ticket-summary muted small', text: yt.summary }));
+  }
+
   function filterName() {
     const f = state.filter;
     if (!f) return '';
@@ -228,7 +293,8 @@
     return issue ? issue.label : '';
   }
 
-  // 한 줄 행: 날짜 | 고객사 | 기기 | 제목(유일한 강조) | 담당 | 상태. 시각·유저 ID·티켓은 상세에서.
+  // 한 줄 행: 날짜 | 고객사 | 기기 | 제목(유일한 강조) | CS 담당 | CS 상태 | 티켓 담당 | 티켓 상태.
+  // 티켓 담당·상태는 YouTrack·Jira 값 (티켓 담당은 트래커에서 못 읽으면 수동 입력값).
   function rowNode(r) {
     const p = kstParts(new Date(r.received_at));
     const b = el('button', { type: 'button', class: 'cs-row' + (state.selected === r.id ? ' active' : '') },
@@ -238,13 +304,28 @@
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
-      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || '미지정', title: L.assigneeLine(r) }),
+      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || '미지정', title: L.assigneeLine(r, state.yt) }),
       // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
       el('span', { class: 'col-status', title: r.status_note || '' }, el('span', { class: 'dot' }), el('span', { text: L.STATUS[r.status] ? L.STATUS[r.status].label : L.statusLabel(r) })),
+      ticketAsgNode(r, 'col-tasg'),
+      ticketStateNode(r),
     );
     b.style.setProperty('--c', L.statusColor(r));
     b.addEventListener('click', () => selectRow(r.id));
     return b;
+  }
+
+  function ticketAsgNode(r, cls) {
+    const { names, manual } = L.ticketAssignees(r, state.yt);
+    const text = names.length ? names.join(', ') : (r.tickets.length ? '미지정' : '—');
+    return el('span', { class: cls + (names.length ? '' : ' none'), text, title: manual ? `${text} (수동 입력)` : text });
+  }
+  function ticketStateNode(r) {
+    const s = L.ticketState(r, state.yt);
+    if (!s) return el('span', { class: 'col-tstate none', text: r.tickets.length ? (state.ytBusy ? '…' : '확인 불가') : '—' });
+    const n = el('span', { class: 'col-tstate', title: s.title }, el('span', { class: 'dot' }), el('span', { text: s.label }));
+    n.style.setProperty('--c', s.color);
+    return n;
   }
 
   function renderList() {
@@ -286,9 +367,23 @@
     $('detail-reporter').textContent = r.reporter;
     $('detail-assignee').textContent = r.assignee || '미지정';
     $('detail-assignee').className = r.assignee ? '' : 'muted';
-    $('detail-ticket-assignee').textContent = r.ticket_assignee || (r.tickets.length ? '미지정' : '—');
-    $('detail-ticket-assignee').className = r.ticket_assignee ? '' : 'muted';
-    $('detail-tickets').replaceChildren(...(r.tickets.length ? r.tickets.map(ticketNode) : [el('span', { class: 'muted small', text: '없음' })]));
+    const cs = el('span', { class: 'status-inline', text: L.statusLabel(r) });
+    cs.style.setProperty('--c', L.statusColor(r));
+    $('detail-cs-status').replaceChildren(cs);
+    const ta = L.ticketAssignees(r, state.yt);
+    $('detail-ticket-assignee').replaceChildren(
+      el('span', { text: ta.names.length ? ta.names.join(', ') : (r.tickets.length ? '미지정' : '—') }),
+      ...(ta.manual ? [el('span', { class: 'muted small', text: ' (수동 입력)' })] : []));
+    $('detail-ticket-assignee').className = ta.names.length ? '' : 'muted';
+    const ts = L.ticketState(r, state.yt);
+    if (ts) {
+      const n = el('span', { class: 'status-inline', text: ts.label, title: ts.title });
+      n.style.setProperty('--c', ts.color);
+      $('detail-ticket-state').replaceChildren(n);
+    } else {
+      $('detail-ticket-state').replaceChildren(el('span', { class: 'muted', text: r.tickets.length ? (state.ytBusy ? '불러오는 중…' : '확인 불가') : '—' }));
+    }
+    $('detail-tickets').replaceChildren(...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketLine) : [el('span', { class: 'muted small', text: '없음' })]));
     $('detail-desc').textContent = r.description || '—';
     $('detail-history').replaceChildren(...(r.timeline.length
       ? r.timeline.map((t) => {
@@ -332,7 +427,7 @@
     } else if (state.quick === 'assignee') {
       const a = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '담당자 (개발팀)' });
       a.value = r.assignee || '';
-      const t = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '티켓 담당 (비우면 담당자와 같음)' });
+      const t = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '티켓 담당 (YouTrack·Jira 에 없는 티켓일 때만)' });
       t.value = r.ticket_assignee || '';
       const submit = () => saveQuick(r, { assignee: a.value.trim(), ticket_assignee: t.value.trim() });
       [a, t].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } }));
@@ -682,16 +777,17 @@
     loadMonth();
   });
 
-  // ───────────── AI (Edge Function `ai`) ─────────────
+  // ───────────── Edge Function 호출 (`ai`, `tickets`) ─────────────
   // 로그인 JWT 는 supabase-js 가 자동으로 붙임. 실패 시 함수가 돌려준 { error } 메시지를 그대로 사용.
-  async function callAi(body) {
-    const { data, error } = await sb.functions.invoke('ai', { body });
+  function callAi(body) { return callFn('ai', body); }
+  async function callFn(name, body) {
+    const { data, error } = await sb.functions.invoke(name, { body });
     if (!error) return data;
     let msg = error.message || '요청 실패';
     if (error.context && typeof error.context.json === 'function') {
       try { const j = await error.context.json(); if (j && j.error) msg = j.error; } catch { /* 본문 없음 */ }
     } else if (/Failed to send|fetch/i.test(msg)) {
-      msg = 'AI 함수에 연결할 수 없습니다. Edge Function 이 배포되어 있는지 확인하세요.';
+      msg = `${name} 함수에 연결할 수 없습니다. Edge Function 이 배포되어 있는지 확인하세요.`;
     }
     throw new Error(msg);
   }
@@ -813,10 +909,11 @@
     if (state.loading) return;
     if ($('list-error').textContent) { toast('목록을 불러오지 못해 내보낼 수 없습니다.'); return; }
     if (!state.rows.length) { toast('내보낼 CS가 없습니다.'); return; }
-    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', '상태', '담당자', '티켓 담당', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
+    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', 'CS 상태', 'CS 담당', '티켓 담당', '티켓 상태', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
     const lines = [header, ...state.rows.map((r) => [
       fmtDateTime(r.received_at), r.reporter, r.customer, r.device, r.version,
-      r.title, L.statusLabel(r), r.assignee, r.ticket_assignee,
+      r.title, L.statusLabel(r), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
+      L.ticketInfos(r, state.yt).filter((x) => x.yt).map((x) => `${x.id} ${x.yt.state}`).join('\n'),
       r.description, r.notes, r.timeline.join('\n'), r.tickets.join('\n'),
       fmtDateTime(r.created_at), fmtDateTime(r.updated_at),
     ])].map((cols) => cols.map(csvCell).join(','));

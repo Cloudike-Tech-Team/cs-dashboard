@@ -102,3 +102,57 @@ test('applyFilter status', () => {
   assert.deepEqual(L.applyFilter(rows, { type: 'status', value: 'done' }, []).map((r) => r.id), [1]);
   assert.deepEqual(L.applyFilter(rows, { type: 'status', value: 'open' }, []).map((r) => r.id), [2, 3]);
 });
+
+// ── YouTrack 티켓
+const YT = {
+  'NRF-1': { state: 'In Testing', resolved: false, assignees: ['Toussaint Aurelien'] },
+  'NRF-2': { state: 'Done', resolved: true, assignees: ['Hongjae Yim'] },
+  'NPR-3': { state: '개발중 (Blocked)', resolved: false, assignees: ['Hongjae Yim', 'Donghun Lee'] },
+};
+
+test('ticketId / ticketIds: URL·텍스트에서 이슈 ID, 중복 제거', () => {
+  assert.equal(L.ticketId('https://yt.cloudike.io/issue/NRF-4817/some-slug'), 'NRF-4817');
+  assert.equal(L.ticketId('NRF-5029 로그인 오류'), 'NRF-5029');
+  assert.equal(L.ticketId('v3.19.61-2'), '');
+  assert.equal(L.ticketId('nrf-1'), '');
+  assert.equal(L.ticketId('https://cloudike.atlassian.net/browse/CLDA-82'), 'CLDA-82');
+  assert.deepEqual(L.ticketIds([row({ tickets: ['NRF-1', 'x'] }), row({ tickets: ['https://yt.cloudike.io/issue/NRF-1', 'CLDQA-9'] })]), ['NRF-1', 'CLDQA-9']);
+});
+
+test('ticketAssignees: YouTrack 우선, 못 읽으면 수동 입력값', () => {
+  assert.deepEqual(L.ticketAssignees(row({ tickets: ['NRF-1', 'NRF-2', 'NPR-3'], ticket_assignee: '김개발' }), YT),
+    { names: ['Toussaint Aurelien', 'Hongjae Yim', 'Donghun Lee'], manual: false });
+  assert.deepEqual(L.ticketAssignees(row({ tickets: ['JIRA 링크'], ticket_assignee: '김개발' }), YT), { names: ['김개발'], manual: true });
+  assert.deepEqual(L.ticketAssignees(row({ tickets: ['NRF-1'], ticket_assignee: '김개발' }), {}), { names: ['김개발'], manual: true });
+  assert.deepEqual(L.ticketAssignees(row(), YT), { names: [], manual: false });
+});
+
+test('ticketState: 안 끝난 첫 티켓, 모두 끝났으면 첫 티켓, 여러 개면 외 n', () => {
+  assert.equal(L.ticketState(row({ tickets: ['x'] }), YT), null);
+  const s = L.ticketState(row({ tickets: ['NRF-2', 'NRF-1'] }), YT);
+  assert.equal(s.label, 'In Testing 외 1');
+  assert.equal(s.title, 'NRF-2 Done · NRF-1 In Testing');
+  assert.equal(s.allResolved, false);
+  const d = L.ticketState(row({ tickets: ['NRF-2'] }), YT);
+  assert.deepEqual([d.label, d.color, d.allResolved], ['Done', '#15803D', true]);
+});
+
+test('ytStateColor', () => {
+  assert.equal(L.ytStateColor({ state: 'Rejected', resolved: true }), '#6B7280');
+  assert.equal(L.ytStateColor({ state: '개발중 (Blocked)', resolved: false }), '#B91C1C');
+  assert.equal(L.ytStateColor({ state: 'Code Review', resolved: false }), '#7C3AED');
+  assert.equal(L.ytStateColor({ state: 'In Progress', resolved: false }), '#B45309');
+  assert.equal(L.ytStateColor({ state: 'Backlog', resolved: false }), '#1D4ED8');
+  // Jira
+  assert.equal(L.ytStateColor({ state: '해결', resolved: true }), '#15803D');
+  assert.equal(L.ytStateColor({ state: '진행 불가 (재현X)', resolved: true }), '#6B7280');
+  assert.equal(L.ytStateColor({ state: '원인 분석중', resolved: false }), '#B45309');
+});
+
+test('assigneeLine·matchesSearch: YouTrack 값 반영', () => {
+  const r = row({ assignee: '오민식', tickets: ['NRF-1'], ticket_assignee: '김개발' });
+  assert.equal(L.assigneeLine(r, YT), '담당 오민식 · 티켓 Toussaint Aurelien');
+  assert.equal(L.matchesSearch(r, 'aurelien', YT), true);
+  assert.equal(L.matchesSearch(r, 'in testing', YT), true);
+  assert.equal(L.matchesSearch(r, 'aurelien'), false);
+});

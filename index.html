@@ -6,7 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <meta name="app-version" content="20261027">
+  <link rel="stylesheet" href="css/style.css?v=20261027">
 </head>
 <body>
   <!-- 로그인 -->
@@ -113,10 +114,11 @@
       <section class="list" aria-label="CS 목록">
         <div class="panel-head">
           <strong id="list-title"></strong>
-          <span class="muted small">행을 누르면 오른쪽에 상세가 열립니다</span>
+          <span class="muted small">행을 누르면 오른쪽에 상세가 열립니다 · <button id="tickets-refresh" class="link-btn" type="button" title="티켓 담당·상태를 YouTrack·Jira 에서 다시 읽습니다">티켓 새로고침</button></span>
         </div>
         <p id="list-error" class="error side-pad" hidden></p>
-        <div class="list-head"><span>접수</span><span>고객사</span><span>기기</span><span>현상</span><span>담당</span><span>상태</span></div>
+        <p id="tickets-error" class="error side-pad" hidden></p>
+        <div class="list-head"><span>접수</span><span>고객사</span><span>기기</span><span>현상</span><span>CS 담당</span><span>CS 상태</span><span>티켓 담당</span><span>티켓 상태</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
       </section>
@@ -139,9 +141,11 @@
             <dt>기기</dt><dd id="detail-device"></dd>
             <dt>접수</dt><dd id="detail-received" class="mono"></dd>
             <dt>접수자</dt><dd id="detail-reporter"></dd>
-            <dt>담당자</dt><dd id="detail-assignee"></dd>
+            <dt>CS 담당</dt><dd id="detail-assignee"></dd>
+            <dt>CS 상태</dt><dd id="detail-cs-status"></dd>
             <dt>티켓 담당</dt><dd id="detail-ticket-assignee"></dd>
-            <dt>티켓</dt><dd id="detail-tickets" class="ticket-chips"></dd>
+            <dt>티켓 상태</dt><dd id="detail-ticket-state"></dd>
+            <dt>티켓</dt><dd id="detail-tickets" class="ticket-lines"></dd>
           </dl>
           <div class="detail-section">
             <h3>현상 설명</h3>
@@ -233,9 +237,10 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/lib.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/config.js?v=20261027"></script>
+  <script src="js/lib.js?v=20261027"></script>
+  <script src="js/app.js?v=20261027"></script>
 </body>
 </html>

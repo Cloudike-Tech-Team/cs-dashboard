@@ -12,6 +12,7 @@ cs-dashboard/
 ├── js/app.js             # 로직 (supabase-js v2, CDN 로드, 빌드 없음)
 ├── supabase/schema.sql   # 테이블 + RLS + 월별 건수 뷰 + 월간 요약 테이블
 ├── supabase/functions/ai # Edge Function: 슬랙 메시지 자동 입력 · 월간 요약 (Claude API)
+├── supabase/functions/tickets # Edge Function: 연결된 티켓의 담당자·상태 조회 (YouTrack · Jira API)
 └── .nojekyll
 ```
 
@@ -111,6 +112,9 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 
 이후 수정 사항은 `git push`만 하면 자동으로 재배포됩니다.
 
+> **js/css 를 바꿨다면** `index.html` 의 `<meta name="app-version">` · `?v=` 와 `js/app.js` 의 `APP_VERSION` 을 같은 값(예: 날짜)으로 함께 올리세요.
+> GitHub Pages 는 파일마다 10분씩 캐시해서 배포 직후 예전 HTML 과 새 JS 가 섞일 수 있는데, 버전이 다르면 앱이 HTML 을 새로 받아 한 번 자동 새로고침합니다.
+
 ## 4. 기능 요약
 
 | 요구사항 | 구현 |
@@ -119,7 +123,8 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 | 상태 관리 | `처리 중 / 대기 / 지연 / 배포대기 / 완료 / 원인 미확인` + 상태 메모(예: 로그 대기). 상단 KPI의 "대기·미해결"은 `완료` 가 아닌 전부 |
 | 날짜 역순 정렬 | `received_at desc, created_at desc` |
 | 월별 보기 | ◀ ▶ 이번 달. 월 경계는 KST 기준 |
-| 담당자 | 개발팀 CS 담당자와 티켓 처리자를 CS마다 기록. 목록·상세·CSV·요약 미해결 줄에 표시, 상세 패널 「담당 변경」으로 바로 수정 |
+| 담당자 | **CS 담당**은 CS마다 직접 기록(상세 패널 「담당 변경」). **티켓 담당**은 YouTrack·Jira 에서 자동으로 읽음 (아래 티켓 연동) |
+| 티켓 연동 | 목록·상세에 CS 담당 · CS 상태 · 티켓 담당 · 티켓 상태를 함께 표시. 티켓 담당·상태는 CS 의 티켓 칸(`NRF-4817`, `CLDA-82` 또는 URL)으로 YouTrack·Jira 를 조회한 값 |
 | 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별·담당자별 막대를 눌러 목록 필터. 검색어와 AND |
 | 월별 export | **CSV 내보내기** → `CS_YYYY-MM.csv` (해당 월 전체, BOM 포함) |
 | 리스트 입력 | 처리 타임라인·티켓은 `+ 추가` / `−`로 행 단위 입력. 타임라인 앞의 `10/12` 날짜는 상세에서 분리 표시 |
@@ -135,6 +140,38 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
   ```
 - 상태 목록을 바꾸려면 `js/lib.js`의 `STATUS`, `supabase/functions/ai/lib.ts`의 `Status`/`STATUS_LABEL`, `schema.sql`의 `cs_tickets_status_check` 제약을 **셋 다** 바꾸고 스키마 재실행·함수 재배포.
 - 회사 계정만 허용하려면 `schema.sql`의 정책 조건을 `(auth.jwt() ->> 'email') like '%@cloudike.io'`로 바꾸세요.
+
+## 티켓 연동 (YouTrack · Jira → 티켓 담당 · 티켓 상태)
+
+CS 의 티켓 칸에 적힌 이슈 ID(`NRF-4817`, `CLDA-82`, `https://yt.cloudike.io/issue/NRF-4817`, `https://cloudike.atlassian.net/browse/CLDA-82` 등)로
+Edge Function `tickets` 가 트래커를 조회해 **담당자** 와 **상태** 를 돌려줍니다.
+
+| 트래커 | 대상 | 담당 / 상태 필드 |
+|---|---|---|
+| Jira (cloudike.atlassian.net) | `JIRA_PROJECTS` 의 프로젝트 키 (기본 `CLDA,GOVNIPA`) | assignee / status (완료 여부는 statusCategory=done) |
+| YouTrack (yt.cloudike.io) | 그 밖의 모든 키 (NRF, CLM, DAM, VPI …) | Assignee / State. NPR 은 `개발 담당자` / `진행 상황` |
+
+- 월을 열 때마다 새로 읽고, 목록 위 「티켓 새로고침」으로 언제든 다시 읽을 수 있습니다. **DB 에는 저장하지 않습니다**(표시 전용).
+- 티켓이 여러 개면 목록에는 아직 안 끝난 첫 티켓 상태를 `In Progress 외 1` 처럼 표시하고, 상세에는 티켓별로 상태·담당·제목을 보여 줍니다.
+- 트래커에서 읽지 못한 티켓만 있는 CS 는 수동 입력한 「티켓 담당」을 대신 표시합니다(`수동 입력` 표시).
+- 한쪽 토큰만 등록돼 있으면 그쪽 티켓만 읽히고, 목록 위에 나머지를 못 읽었다는 안내가 뜹니다.
+- CS 담당 · CS 상태는 지금처럼 대시보드에서 관리합니다.
+- CSV 내보내기에 `티켓 담당`(트래커 값) · `티켓 상태` 열이 들어갑니다. 월간 요약(AI)은 여전히 DB 값만 사용합니다.
+
+> Claude Code 의 YouTrack·Atlassian MCP 는 Claude 세션 안에서만 쓰는 도구라 웹 페이지에서 직접 호출할 수 없습니다. 그래서 같은 서버의 REST API 를 Edge Function 에서 호출합니다. 토큰은 Supabase secrets 에만 저장되고 브라우저에는 노출되지 않습니다.
+
+### 배포
+```bash
+# YouTrack → 프로필 → Account Security → New token (Scope: YouTrack)
+npx supabase secrets set YOUTRACK_TOKEN=perm:...
+# Jira → https://id.atlassian.com/manage-profile/security/api-tokens → Create API token
+#   토큰을 만든 계정의 이메일과 함께 등록. 그 계정이 CLDA·GOVNIPA 를 볼 수 있어야 함
+npx supabase secrets set JIRA_EMAIL=you@cloudike.io JIRA_TOKEN=ATATT...
+# (선택) 기본값과 다를 때만
+# npx supabase secrets set YOUTRACK_URL=https://yt.cloudike.io JIRA_URL=https://cloudike.atlassian.net JIRA_PROJECTS=CLDA,GOVNIPA
+npx supabase functions deploy tickets --no-verify-jwt
+```
+DB 스키마 변경은 없습니다. Jira 에 프로젝트가 늘면 `JIRA_PROJECTS` 만 다시 설정하면 됩니다(재배포 불필요).
 
 ## AI 기능 (슬랙 메시지 자동 입력 · 월간 요약)
 
@@ -179,6 +216,7 @@ Sonnet 5.5 기준 붙여넣기 분석 1회 약 $0.006, 월간 요약 1회(100건
 
 ### 로컬 테스트
 ```bash
+cd supabase/functions/tickets && npx deno-bin test --allow-net=jsr.io && npx deno-bin check index.ts && cd -
 cd supabase/functions/ai
 npx deno-bin test --allow-net=jsr.io   # 순수 로직 단위 테스트
 npx deno-bin check index.ts            # 타입 검사

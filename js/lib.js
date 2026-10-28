@@ -50,6 +50,27 @@
     return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }
 
+  // 전체 기간 검색 결과의 기간 묶음. 오늘 기준, 겹치지 않게: 이번 달(KST 달력) → 최근 30일 → 최근 1년 → 그 이전.
+  const RECENCY = [
+    { key: 'month', label: '이번 달' },
+    { key: 'd30', label: '최근 30일' },
+    { key: 'y1', label: '최근 1년' },
+    { key: 'older', label: '1년 이상 전' },
+  ];
+  function recencyKey(iso, now = Date.now()) {
+    if (monthKST(iso) === monthKST(new Date(now).toISOString())) return 'month';
+    const days = daysSince(iso, now);
+    if (days <= 30) return 'd30';
+    if (days <= 365) return 'y1';
+    return 'older';
+  }
+  // rows 순서를 유지한 채 묶음별로. 빈 묶음은 뺀다. [{ key, label, rows }]
+  function groupByRecency(rows, now = Date.now()) {
+    const by = new Map(RECENCY.map((g) => [g.key, []]));
+    rows.forEach((r) => by.get(recencyKey(r.received_at, now)).push(r));
+    return RECENCY.map((g) => ({ ...g, rows: by.get(g.key) })).filter((g) => g.rows.length);
+  }
+
   function kpi(rows) {
     return {
       total: rows.length,
@@ -142,7 +163,7 @@
   }
 
   return {
-    STATUS, ISSUE_COLORS, daysSince, monthKST, carryMonths, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

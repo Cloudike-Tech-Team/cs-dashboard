@@ -175,3 +175,18 @@ test('carryMonths: KST 월별, 완료 제외, 최근 월부터', () => {
   assert.deepEqual(L.carryMonths(rows), [['2026-10', 1], ['2026-09', 1], ['2026-08', 1], ['2025-12', 1]]);
   assert.equal(L.monthKST('2026-09-30T15:30:00Z'), '2026-10');
 });
+
+test('recencyKey / groupByRecency: 이번 달 → 30일 → 1년 → 그 이전, 빈 묶음 제외', () => {
+  const now = Date.parse('2026-10-28T12:00:00+09:00');
+  assert.equal(L.recencyKey('2026-10-01T00:30:00+09:00', now), 'month');
+  assert.equal(L.recencyKey('2026-09-30T23:00:00+09:00', now), 'd30');   // 지난달이지만 30일 이내
+  assert.equal(L.recencyKey('2026-09-20T12:00:00+09:00', now), 'y1');    // 38일 전
+  assert.equal(L.recencyKey('2025-10-29T12:00:00+09:00', now), 'y1');    // 364일 전
+  assert.equal(L.recencyKey('2025-10-20T12:00:00+09:00', now), 'older');
+  const g = L.groupByRecency([
+    row({ id: 'a', received_at: '2026-10-20T00:00:00+09:00' }),
+    row({ id: 'b', received_at: '2025-01-01T00:00:00+09:00' }),
+    row({ id: 'c', received_at: '2026-10-02T00:00:00+09:00' }),
+  ], now);
+  assert.deepEqual(g.map((x) => [x.label, x.rows.map((r) => r.id)]), [['이번 달', ['a', 'c']], ['1년 이상 전', ['b']]]);
+});

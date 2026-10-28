@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261028">
-  <link rel="stylesheet" href="css/style.css?v=20261028">
+  <meta name="app-version" content="20261028-3">
+  <link rel="stylesheet" href="css/style.css?v=20261028-3">
 </head>
 <body>
   <!-- 로그인 -->
@@ -50,6 +50,9 @@
         <label class="search">
           <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
           <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓">
+        </label>
+        <label class="search-all" title="켜면 이 달이 아니라 모든 달의 CS에서 검색합니다">
+          <input id="search-all" type="checkbox"> 전체 기간
         </label>
       </div>
       <div class="toolbar-right">
@@ -121,6 +124,10 @@
         <div class="list-head"><span>접수</span><span>고객사</span><span>기기</span><span>현상</span><span>CS 담당</span><span>CS 상태</span><span>티켓 담당</span><span>티켓 상태</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
+
+        <!-- 전체 기간 검색 결과: 켜져 있고 검색어가 있으면 월 목록·밀린 미해결 대신 보여 준다 -->
+        <div id="history-list" class="cs-list" hidden></div>
+        <p id="history-empty" class="empty" hidden></p>
 
         <!-- 밀린 미해결: 이 달 목록과 섞이지 않게 아래에 별도 구역으로 -->
         <details id="carry-box" class="carry-box" open hidden>
@@ -249,8 +256,8 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261028"></script>
-  <script src="js/lib.js?v=20261028"></script>
-  <script src="js/app.js?v=20261028"></script>
+  <script src="js/config.js?v=20261028-3"></script>
+  <script src="js/lib.js?v=20261028-3"></script>
+  <script src="js/app.js?v=20261028-3"></script>
 </body>
 </html>

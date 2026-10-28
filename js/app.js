@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261027';
+  const APP_VERSION = '20261028';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -35,6 +35,7 @@
   const state = {
     month: currentMonthKST(),  // 'YYYY-MM'
     rows: [],
+    carry: [],                 // 보고 있는 달 이전에 접수돼 아직 완료되지 않은 CS (f/u 용)
     rowsMonth: null,           // state.rows 가 실제로 속한 월 (export 파일명용)
     loading: false,
     editing: null,             // 수정 중인 원본 row (신규면 null)
@@ -164,7 +165,7 @@
     $('list-title').textContent = '불러오는 중…';
     setLoading(true);
 
-    const { data, error } = await fetchMonth(month);
+    const [{ data, error }, carryRes] = await Promise.all([fetchMonth(month), fetchCarry(month)]);
 
     if (seq !== state.loadSeq) return;
     setLoading(false);
@@ -174,10 +175,12 @@
     } else {
       state.rows = data;
     }
+    state.carry = carryRes.error ? [] : carryRes.data;
+    if (carryRes.error && !error) showError($('list-error'), '밀린 미해결 불러오기 실패: ' + carryRes.error.message);
     state.rowsMonth = month;
     state.filter = null;
     state.quick = null;
-    state.selected = opts.selected && state.rows.some((r) => r.id === opts.selected) ? opts.selected : null;
+    state.selected = opts.selected && allRows().some((r) => r.id === opts.selected) ? opts.selected : null;
     renderAll();
     loadSummary(seq);
     loadTickets({ refresh: true });
@@ -186,7 +189,7 @@
   // 이번 달 CS 에 연결된 티켓의 담당자·상태를 YouTrack·Jira 에서 읽어 온다 (Edge Function `tickets`. 표시 전용, DB 에 쓰지 않음).
   // refresh: 캐시에 있어도 다시 읽음 (월 이동·새로고침 버튼). 아니면 처음 보는 ID 만.
   async function loadTickets({ refresh = false } = {}) {
-    const ids = L.ticketIds(state.rows).filter((id) => refresh || !(id in state.yt));
+    const ids = L.ticketIds(allRows()).filter((id) => refresh || !(id in state.yt));
     if (!ids.length) { renderYtStatus(); return; }
     state.ytBusy++;            // 월을 빠르게 넘기면 요청이 겹칠 수 있음. 결과는 ID 별로 합치므로 순서는 상관없다
     renderYtStatus();
@@ -243,15 +246,33 @@
     }
   }
 
+  // 밀린 미해결: 이 달 시작 전에 접수됐고 지금 완료가 아닌 건 (몇 달 전이든 완료될 때까지 계속 따라옴).
+  // 오래 밀린 건부터 보이도록 오래된 순.
+  const CARRY_LIMIT = 500;
+  async function fetchCarry(month) {
+    const { from } = monthRange(month);
+    return await sb
+      .from('cs_tickets')
+      .select('*')
+      .neq('status', 'done')
+      .lt('received_at', from)
+      .order('received_at', { ascending: true })
+      .order('id', { ascending: true })
+      .limit(CARRY_LIMIT);
+  }
+
   function setLoading(on) {
     state.loading = on;
     $('export-btn').disabled = on;
   }
 
-  function filteredRows() {
+  function allRows() { return [...state.rows, ...state.carry]; }
+
+  // 월 목록·밀린 미해결 모두 같은 필터·검색을 적용한다
+  function filteredRows(rows = state.rows) {
     const q = $('search-input').value;
     const issues = state.summary ? state.summary.issues || [] : [];
-    return L.applyFilter(state.rows, state.filter, issues).filter((r) => L.matchesSearch(r, q, state.yt));
+    return L.applyFilter(rows, state.filter, issues).filter((r) => L.matchesSearch(r, q, state.yt));
   }
 
   function deviceLine(r) { return r.version ? `${r.device} · v${r.version}` : r.device; }
@@ -295,14 +316,18 @@
 
   // 한 줄 행: 날짜 | 고객사 | 기기 | 제목(유일한 강조) | CS 담당 | CS 상태 | 티켓 담당 | 티켓 상태.
   // 티켓 담당·상태는 YouTrack·Jira 값 (티켓 담당은 트래커에서 못 읽으면 수동 입력값).
-  function rowNode(r) {
+  // carry: 밀린 미해결 행. 보고 있는 달과 연도가 다르면 접수일을 YY-MM-DD 로, 제목 옆에 경과일(D+N).
+  function rowNode(r, carry = false) {
     const p = kstParts(new Date(r.received_at));
-    const b = el('button', { type: 'button', class: 'cs-row' + (state.selected === r.id ? ' active' : '') },
-      el('span', { class: 'col-when mono', text: `${p.month}-${p.day}`, title: `${p.hour}:${p.minute} (${WEEKDAY_KO[p.weekday] || p.weekday})` }),
+    const age = carry ? L.daysSince(r.received_at) : 0;
+    const when = carry && p.year !== state.month.slice(0, 4) ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
+    const b = el('button', { type: 'button', class: 'cs-row' + (carry ? ' carry' : '') + (state.selected === r.id ? ' active' : '') },
+      el('span', { class: 'col-when mono', text: when, title: `${carry ? `${p.year}-` : ''}${p.month}-${p.day} ${p.hour}:${p.minute} (${WEEKDAY_KO[p.weekday] || p.weekday})` }),
       el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
       el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
+        carry ? el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: `접수 후 ${age}일` }) : null,
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
       el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || '미지정', title: L.assigneeLine(r, state.yt) }),
       // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
@@ -330,7 +355,15 @@
 
   function renderList() {
     const rows = filteredRows();
-    $('cs-list').replaceChildren(...rows.map(rowNode));
+    $('cs-list').replaceChildren(...rows.map((r) => rowNode(r)));
+    const carry = filteredRows(state.carry);
+    $('carry-box').hidden = carry.length === 0;
+    $('carry-list').replaceChildren(...carry.map((r) => rowNode(r, true)));
+    const carryOpen = carry.filter((r) => r.status !== 'done').length;
+    const year = state.month.slice(0, 4);
+    const byMonth = L.carryMonths(carry).map(([ym, n]) => `${ym.slice(0, 4) === year ? '' : `${ym.slice(2, 4)}년 `}${Number(ym.slice(5))}월 ${n}`);
+    $('carry-title').textContent = `밀린 미해결 · ${carryOpen}건` + (byMonth.length ? ` (${byMonth.join(' · ')})` : '')
+      + (state.carry.length >= CARRY_LIMIT ? ` · 오래된 ${CARRY_LIMIT}건까지 표시` : '');
     const total = state.rows.length;
     const name = filterName();
     $('list-title').textContent = state.filter
@@ -351,7 +384,7 @@
   }
 
   // ───────────── 상세 패널 ─────────────
-  function selectedRow() { return state.rows.find((x) => x.id === state.selected) || null; }
+  function selectedRow() { return allRows().find((x) => x.id === state.selected) || null; }
 
   function renderDetail() {
     const r = selectedRow();
@@ -461,8 +494,11 @@
       showError($('detail-error'), error ? '저장 실패: ' + error.message : CONFLICT_MSG);
       return;
     }
-    const idx = state.rows.findIndex((x) => x.id === r.id);
-    if (idx >= 0) state.rows[idx] = data[0];
+    // 밀린 미해결에서 완료로 바꾼 건도 다음 조회까지는 남겨 둔다 (바로 되돌릴 수 있게)
+    [state.rows, state.carry].forEach((list) => {
+      const idx = list.findIndex((x) => x.id === r.id);
+      if (idx >= 0) list[idx] = data[0];
+    });
     state.quick = null;
     toast('저장했습니다.');
     rememberNames([data[0].assignee, data[0].ticket_assignee]);
@@ -480,7 +516,9 @@
     const k = L.kpi(state.rows);
     $('kpi-total').textContent = String(k.total);
     $('kpi-open').textContent = String(k.open);
-    $('kpi-open-sub').textContent = k.total ? `전체의 ${Math.round((k.open / k.total) * 100)}%` : '';
+    const carryOpen = state.carry.filter((r) => r.status !== 'done').length;
+    $('kpi-open-sub').textContent = [k.total ? `전체의 ${Math.round((k.open / k.total) * 100)}%` : '', carryOpen ? `밀린 미해결 ${carryOpen}건` : '']
+      .filter(Boolean).join(' · ');
     $('kpi-ticketed').textContent = String(k.ticketed);
     $('kpi-ticketed-of').textContent = `/ ${k.total}`;
     $('kpi-ticketed-sub').textContent = k.total ? `${k.total - k.ticketed}건은 티켓 없음` : '';
@@ -750,8 +788,10 @@
     rememberNames([payload.assignee, payload.ticket_assignee]);
     dialog.close();
     toast(target ? '수정했습니다.' : '등록했습니다.');
-    // 저장한 CS 가 있는 달로 이동하고, 그 CS 를 상세에 연다
-    state.month = toLocalInput(res.data[0].received_at).slice(0, 7);
+    // 저장한 CS 가 있는 달로 이동하고, 그 CS 를 상세에 연다.
+    // 밀린 미해결에서 고친 건은 f/u 중이므로 지금 보는 달에 머문다.
+    const fromCarry = target && state.carry.some((x) => x.id === target.id);
+    if (!fromCarry) state.month = toLocalInput(res.data[0].received_at).slice(0, 7);
     loadMonth({ selected: res.data[0].id });
   });
 

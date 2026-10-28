@@ -36,6 +36,20 @@
     return { when: '', text: s };
   }
 
+  // 접수 후 경과일 (KST 날짜 기준이 아닌 24시간 단위, 0 이상)
+  function daysSince(iso, now = Date.now()) {
+    return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86400000));
+  }
+
+  // 밀린 미해결의 접수 월(KST)별 건수. 완료 건은 빼고 최근 월부터. [['2026-10', 5], ['2026-08', 1]]
+  const KST_YM = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit' });
+  function monthKST(iso) { return KST_YM.format(new Date(iso)).slice(0, 7); }
+  function carryMonths(rows) {
+    const m = new Map();
+    rows.filter((r) => r.status !== 'done').forEach((r) => { const k = monthKST(r.received_at); m.set(k, (m.get(k) || 0) + 1); });
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }
+
   function kpi(rows) {
     return {
       total: rows.length,
@@ -128,7 +142,7 @@
   }
 
   return {
-    STATUS, ISSUE_COLORS, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, ISSUE_COLORS, daysSince, monthKST, carryMonths, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

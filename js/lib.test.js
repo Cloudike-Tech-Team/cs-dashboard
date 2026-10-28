@@ -156,3 +156,22 @@ test('assigneeLine·matchesSearch: YouTrack 값 반영', () => {
   assert.equal(L.matchesSearch(r, 'in testing', YT), true);
   assert.equal(L.matchesSearch(r, 'aurelien'), false);
 });
+
+test('daysSince: 24시간 단위, 미래는 0', () => {
+  const now = Date.parse('2026-10-27T12:00:00+09:00');
+  assert.equal(L.daysSince('2026-10-27T09:00:00+09:00', now), 0);
+  assert.equal(L.daysSince('2026-09-27T12:00:00+09:00', now), 30);
+  assert.equal(L.daysSince('2026-10-28T00:00:00+09:00', now), 0);
+});
+
+test('carryMonths: KST 월별, 완료 제외, 최근 월부터', () => {
+  const rows = [
+    row({ received_at: '2026-09-30T15:30:00Z', status: 'open' }),     // KST 10-01
+    row({ received_at: '2026-09-30T14:30:00Z', status: 'waiting' }),  // KST 09-30
+    row({ received_at: '2026-08-02T00:00:00Z', status: 'delayed' }),
+    row({ received_at: '2026-10-05T00:00:00Z', status: 'done' }),
+    row({ received_at: '2025-12-20T00:00:00Z', status: 'open' }),
+  ];
+  assert.deepEqual(L.carryMonths(rows), [['2026-10', 1], ['2026-09', 1], ['2026-08', 1], ['2025-12', 1]]);
+  assert.equal(L.monthKST('2026-09-30T15:30:00Z'), '2026-10');
+});

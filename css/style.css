@@ -165,12 +165,23 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .notes-list .cust { font-family: var(--mono); font-weight: 600; color: var(--text); margin-right: 4px; }
 
 /* 목록 */
-.list-head, .cs-row { display: grid; grid-template-columns: 52px 130px 110px minmax(0, 1fr) 72px 84px 110px 110px; gap: 12px; align-items: center; }
+.list-head, .cs-row { display: grid; grid-template-columns: 60px 130px 110px minmax(0, 1fr) 72px 84px 110px 110px; gap: 12px; align-items: center; }
 .list-head {
   padding: 6px 20px; border-bottom: 1px solid var(--line);
   font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em;
 }
 .cs-list { display: flex; flex-direction: column; }
+.carry-box { margin-top: 28px; border-top: 3px solid #B45309; }
+.carry-head { cursor: pointer; justify-content: flex-start; align-items: baseline; flex-wrap: wrap; gap: 10px; color: #B45309; background: #FFFBEB; }
+.carry-head { list-style: none; }
+.carry-head::-webkit-details-marker { display: none; }
+.carry-head::before { content: '▸'; font-size: 10px; }
+.carry-box[open] > .carry-head::before { content: '▾'; }
+.carry-head strong { font-size: 12px; }
+.carry-head .muted { font-weight: 400; letter-spacing: 0; }
+.cs-row.carry .col-when { color: #B45309; }
+.row-age { flex: none; font-size: 11px; color: var(--muted); }
+.row-age.old { color: #B91C1C; font-weight: 600; }
 .cs-row {
   font: inherit; width: 100%; text-align: left; padding: 0 20px; height: 38px; border: 0; border-bottom: 1px solid var(--line-2);
   border-left: 3px solid transparent; background: #FFFFFF; color: var(--text); cursor: pointer;
@@ -243,7 +254,7 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
   .side, .list, .detail { flex: 1 1 100%; border-left: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .side, .detail { position: static; max-height: none; overflow: visible; }
   .list-head { display: none; }
-  .cs-row { grid-template-columns: 52px minmax(0, 1fr) 72px 96px; height: auto; padding: 8px 20px; gap: 6px 10px; }
+  .cs-row { grid-template-columns: 60px minmax(0, 1fr) 72px 96px; height: auto; padding: 8px 20px; gap: 6px 10px; }
   .col-who { grid-column: 2; }
   .col-device { display: none; }
   .col-what { grid-column: 2; grid-row: 2; }

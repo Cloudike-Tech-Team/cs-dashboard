@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261027">
-  <link rel="stylesheet" href="css/style.css?v=20261027">
+  <meta name="app-version" content="20261028">
+  <link rel="stylesheet" href="css/style.css?v=20261028">
 </head>
 <body>
   <!-- 로그인 -->
@@ -121,6 +121,16 @@
         <div class="list-head"><span>접수</span><span>고객사</span><span>기기</span><span>현상</span><span>CS 담당</span><span>CS 상태</span><span>티켓 담당</span><span>티켓 상태</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
+
+        <!-- 밀린 미해결: 이 달 목록과 섞이지 않게 아래에 별도 구역으로 -->
+        <details id="carry-box" class="carry-box" open hidden>
+          <summary class="panel-head carry-head">
+            <strong id="carry-title"></strong>
+            <span class="muted small">이 달 전에 접수돼 아직 완료되지 않은 CS · 완료될 때까지 매달 표시 · 완료로 바꾸면 다음 조회부터 빠집니다</span>
+          </summary>
+          <div class="list-head"><span>접수</span><span>고객사</span><span>기기</span><span>현상</span><span>CS 담당</span><span>CS 상태</span><span>티켓 담당</span><span>티켓 상태</span></div>
+          <div id="carry-list" class="cs-list"></div>
+        </details>
       </section>
 
       <!-- 상세 -->
@@ -239,8 +249,8 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261027"></script>
-  <script src="js/lib.js?v=20261027"></script>
-  <script src="js/app.js?v=20261027"></script>
+  <script src="js/config.js?v=20261028"></script>
+  <script src="js/lib.js?v=20261028"></script>
+  <script src="js/app.js?v=20261028"></script>
 </body>
 </html>

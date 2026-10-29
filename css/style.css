@@ -237,6 +237,13 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 
 /* 모달 */
 dialog { width: min(760px, calc(100vw - 24px)); max-height: calc(100vh - 24px); border: 1px solid var(--line); border-radius: 2px; padding: 0; background: #FFFFFF; color: var(--text); }
+.asg-dialog { width: min(440px, calc(100vw - 24px)); }
+.asg-add { display: flex; gap: 6px; }
+.asg-items { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); max-height: 50vh; overflow-y: auto; }
+.asg-items li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.asg-items li > .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asg-items li > input { flex: 1; min-width: 0; }
+.asg-items li .warn { font-size: 11px; color: var(--danger); }
 dialog::backdrop { background: rgba(17, 19, 24, .4); }
 .cs-form { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
 .dialog-head, .dialog-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }

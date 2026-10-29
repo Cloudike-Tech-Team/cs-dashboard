@@ -172,3 +172,72 @@ create policy "sum_update" on public.cs_monthly_summaries
   for update to authenticated using (true) with check (true);
 create policy "sum_delete" on public.cs_monthly_summaries
   for delete to authenticated using (true);
+
+-- ─────────────────────────────────────────────
+-- 6. CS 담당 명단 (화면의 드롭다운·「관리」 창에서 추가·이름 수정·삭제)
+--    cs_tickets.assignee 는 이름 텍스트 그대로 둔다. 명단에서 삭제해도 기존 CS 의 이름은 남는다.
+-- ─────────────────────────────────────────────
+create table if not exists public.cs_assignees (
+  name       text primary key check (char_length(name) between 1 and 100 and name = btrim(name)),
+  created_at timestamptz not null default now()
+);
+
+alter table public.cs_assignees enable row level security;
+
+revoke all on table public.cs_assignees from anon;
+grant select, insert, update, delete on table public.cs_assignees to authenticated;
+
+drop policy if exists "asg_select" on public.cs_assignees;
+drop policy if exists "asg_insert" on public.cs_assignees;
+drop policy if exists "asg_update" on public.cs_assignees;
+drop policy if exists "asg_delete" on public.cs_assignees;
+
+create policy "asg_select" on public.cs_assignees
+  for select to authenticated using (true);
+create policy "asg_insert" on public.cs_assignees
+  for insert to authenticated with check (true);
+create policy "asg_update" on public.cs_assignees
+  for update to authenticated using (true) with check (true);
+create policy "asg_delete" on public.cs_assignees
+  for delete to authenticated using (true);
+
+-- 처음 한 번: 지금까지 CS 에 입력된 담당자 이름으로 명단을 채운다 (이미 있으면 건너뜀)
+insert into public.cs_assignees (name)
+select distinct btrim(assignee) from public.cs_tickets
+ where btrim(assignee) <> '' and char_length(btrim(assignee)) <= 100
+on conflict (name) do nothing;
+
+-- 이름 수정: 명단과 기존 CS(CS 담당, 같은 이름의 수동 티켓 담당)를 한 트랜잭션에서 바꾼다.
+-- 그래야 담당자별 필터가 옛 이름·새 이름으로 갈라지지 않는다. 바뀐 CS 건수를 돌려준다.
+-- security invoker: 호출한 사용자 권한(RLS)으로 실행.
+create or replace function public.rename_cs_assignee(old_name text, new_name text)
+returns int
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  n int;
+begin
+  new_name := btrim(coalesce(new_name, ''));
+  if new_name = '' then
+    raise exception '새 이름이 비어 있습니다.';
+  end if;
+  if new_name = old_name then
+    return 0;
+  end if;
+  update public.cs_assignees set name = new_name where name = old_name;
+  if not found then
+    raise exception '명단에 없는 담당자입니다: %', old_name;
+  end if;
+  update public.cs_tickets
+     set assignee        = case when assignee = old_name then new_name else assignee end,
+         ticket_assignee = case when ticket_assignee = old_name then new_name else ticket_assignee end
+   where assignee = old_name or ticket_assignee = old_name;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+
+revoke all on function public.rename_cs_assignee(text, text) from public, anon;
+grant execute on function public.rename_cs_assignee(text, text) to authenticated;

@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261028-3';
+  const APP_VERSION = '20261029';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -36,6 +36,8 @@
     month: currentMonthKST(),  // 'YYYY-MM'
     rows: [],
     carry: [],                 // 보고 있는 달 이전에 접수돼 아직 완료되지 않은 CS (f/u 용)
+    assignees: [],             // CS 담당 명단 (cs_assignees, 이름순)
+    assigneesError: '',
     history: null,             // 전체 기간 검색용 전체 CS (처음 켤 때 읽고, 저장·삭제하면 비워서 다시 읽음)
     historyLoading: false,
     historyError: '',
@@ -137,6 +139,7 @@
     signedInAs = email;
     if (session) {
       $('user-email').textContent = email || '';
+      loadAssignees();
       loadMonth();
     } else {
       state.rows = [];
@@ -543,12 +546,12 @@
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
     } else if (state.quick === 'assignee') {
-      const a = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '담당자 (개발팀)' });
-      a.value = r.assignee || '';
+      const a = el('select', { 'aria-label': 'CS 담당' });
+      fillAssigneeSelect(a, r.assignee || '');
       const t = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: '티켓 담당 (YouTrack·Jira 에 없는 티켓일 때만)' });
       t.value = r.ticket_assignee || '';
       const submit = () => saveQuick(r, { assignee: a.value.trim(), ticket_assignee: t.value.trim() });
-      [a, t].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } }));
+      [t].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } }));
       box.append(el('div', { class: 'quick-form' }, a, t, quickButtons(submit)));
       a.focus();
     }
@@ -789,7 +792,7 @@
       f.title.value = row.title;
       f.status.value = row.status;
       f.status_note.value = row.status_note;
-      f.assignee.value = row.assignee || '';
+      fillAssigneeSelect(f.assignee, row.assignee || '');
       f.ticket_assignee.value = row.ticket_assignee || '';
       f.description.value = row.description;
       f.notes.value = row.notes;
@@ -801,6 +804,7 @@
       try { f.reporter.value = localStorage.getItem(LS_REPORTER) || ''; } catch { /* 저장소 차단 시 무시 */ }
       f.received_at.value = toLocalInput(new Date().toISOString());
       f.status.value = 'open';
+      fillAssigneeSelect(f.assignee, '');
       $('form-meta').textContent = '';
     }
     if (!listValues('timeline').length) addListItem('timeline');
@@ -950,7 +954,10 @@
     if (p.reporter) f.reporter.value = p.reporter;
     if (p.customer) f.customer.value = p.customer;
     f.title.value = p.title || '';
-    f.assignee.value = p.assignee || '';
+    // 명단에 있는 이름만 고른다. 명단에 없으면 비워 두고 아래 힌트로 알린다
+    const parsedAsg = (p.assignee || '').trim();
+    const asgKnown = state.assignees.includes(parsedAsg);
+    fillAssigneeSelect(f.assignee, asgKnown ? parsedAsg : '');
     const dt = parsedDateToInput(p.received_at);
     if (dt) f.received_at.value = dt;
     f.device.value = p.device && DEVICES.includes(p.device) ? p.device : '';
@@ -964,7 +971,7 @@
     if (!tl.length) addListItem('timeline');
     const hints = [];
     if (tl.length) hints.push(`처리 이력: 댓글 ${tl.length}개를 옮겼음, 순서·날짜 확인`);
-    if (p.assignee) hints.push(`담당자: ${p.assignee}로 읽음, 확인 필요`);
+    if (parsedAsg) hints.push(asgKnown ? `CS 담당: ${parsedAsg}로 읽음, 확인 필요` : `CS 담당: ${parsedAsg}로 읽었지만 명단에 없어 비워 둠 (「CS 담당 관리」에서 추가)`);
     if (!p.received_at) hints.push('날짜: 메시지에 없어 현재 시각 유지');
     else if (/^\d{2}:\d{2}$/.test(p.received_at)) hints.push('날짜: 메시지에 날짜가 없어 오늘로 설정');
     if (!p.device) hints.push('기기: 판단 불가, 직접 선택 필요');
@@ -1079,6 +1086,132 @@
     const names = [...new Set([...fromRows, ...saved].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
     $('assignee-names').replaceChildren(...names.map((n) => el('option', { value: n })));
   }
+
+  // ───────────── CS 담당 명단 (cs_assignees) ─────────────
+  async function loadAssignees() {
+    const { data, error } = await sb.from('cs_assignees').select('name').order('name');
+    state.assigneesError = error ? 'CS 담당 명단을 불러오지 못했습니다: ' + error.message : '';
+    if (error) toast(state.assigneesError + ' (supabase/schema.sql 적용 필요)');
+    if (!error) state.assignees = data.map((x) => x.name).sort((a, b) => a.localeCompare(b, 'ko'));
+    if (error && asgDialog.open) showError($('asg-error'), state.assigneesError);
+    renderAsgItems();
+  }
+
+  // 드롭다운: 미지정 + 명단. 지금 값이 명단에 없으면(삭제된 이름 등) 그대로 고를 수 있게 따로 넣는다.
+  function fillAssigneeSelect(sel, current) {
+    const opts = [el('option', { value: '', text: '미지정' }), ...state.assignees.map((n) => el('option', { value: n, text: n }))];
+    if (current && !state.assignees.includes(current)) opts.push(el('option', { value: current, text: `${current} (명단에 없음)` }));
+    sel.replaceChildren(...opts);
+    sel.value = current;
+  }
+
+  const asgDialog = $('asg-dialog');
+  let asgEditing = null;      // 이름 수정 중인 이름
+  let asgDeleting = null;     // 삭제 확인 중인 이름
+  let asgBusy = false;
+  let asgChanged = false;     // 창을 닫을 때 목록을 다시 읽을지
+
+  function renderAsgItems() {
+    if (!asgDialog.open) return;
+    const items = state.assignees.map((name) => {
+      if (asgEditing === name) {
+        const input = el('input', { maxlength: '100', 'aria-label': `${name} 새 이름` });
+        input.value = name;
+        const save = el('button', { type: 'button', class: 'btn primary small', text: '저장' });
+        const cancel = el('button', { type: 'button', class: 'btn small', text: '취소' });
+        const submit = () => renameAssignee(name, input.value.trim());
+        save.addEventListener('click', submit);
+        cancel.addEventListener('click', () => { asgEditing = null; renderAsgItems(); });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); }
+          if (e.key === 'Escape') { e.preventDefault(); asgEditing = null; renderAsgItems(); }
+        });
+        setTimeout(() => { input.focus(); input.select(); });
+        return el('li', {}, input, save, cancel);
+      }
+      if (asgDeleting === name) {
+        const yes = el('button', { type: 'button', class: 'btn danger small', text: '삭제' });
+        const no = el('button', { type: 'button', class: 'btn small', text: '취소' });
+        yes.addEventListener('click', () => deleteAssignee(name));
+        no.addEventListener('click', () => { asgDeleting = null; renderAsgItems(); });
+        return el('li', {}, el('span', { class: 'name', text: name }), el('span', { class: 'warn', text: '명단에서 뺄까요?' }), yes, no);
+      }
+      const edit = el('button', { type: 'button', class: 'link-btn', text: '이름 수정' });
+      const del = el('button', { type: 'button', class: 'link-btn', text: '삭제' });
+      edit.addEventListener('click', () => { asgEditing = name; asgDeleting = null; renderAsgItems(); });
+      del.addEventListener('click', () => { asgDeleting = name; asgEditing = null; renderAsgItems(); });
+      return el('li', {}, el('span', { class: 'name', text: name }), edit, del);
+    });
+    $('asg-items').replaceChildren(...(items.length ? items : [el('li', { class: 'muted small', text: '명단이 비어 있습니다. 위에서 추가하세요.' })]));
+    $('asg-items').querySelectorAll('button, input').forEach((n) => { n.disabled = asgBusy; });
+  }
+
+  function asgErrorText(error) {
+    if (error.code === '23505') return '이미 명단에 있는 이름입니다.';
+    if (error.code === '23514') return '이름은 1~100자, 앞뒤 공백 없이 입력하세요.';
+    return error.message;
+  }
+
+  async function asgRun(fn) {
+    if (asgBusy) return;
+    asgBusy = true;
+    showError($('asg-error'), '');
+    renderAsgItems();
+    const msg = await fn();
+    asgBusy = false;
+    if (msg) { showError($('asg-error'), msg); renderAsgItems(); return; }
+    asgChanged = true;
+    asgEditing = null;
+    asgDeleting = null;
+    await loadAssignees();
+  }
+
+  function addAssignee(name) {
+    return asgRun(async () => {
+      if (!name) return '이름을 입력하세요.';
+      const { error } = await sb.from('cs_assignees').insert({ name });
+      if (error) return asgErrorText(error);
+      $('asg-add-input').value = '';
+      toast(`${name} 을(를) 추가했습니다.`);
+      return '';
+    });
+  }
+  function renameAssignee(oldName, newName) {
+    return asgRun(async () => {
+      if (!newName) return '새 이름을 입력하세요.';
+      if (newName === oldName) { asgEditing = null; renderAsgItems(); return ''; }
+      const { data, error } = await sb.rpc('rename_cs_assignee', { old_name: oldName, new_name: newName });
+      if (error) return asgErrorText(error);
+      toast(`${oldName} → ${newName} · CS ${data}건도 함께 바꿨습니다.`);
+      return '';
+    });
+  }
+  function deleteAssignee(name) {
+    return asgRun(async () => {
+      const { error } = await sb.from('cs_assignees').delete().eq('name', name);
+      if (error) return asgErrorText(error);
+      toast(`${name} 을(를) 명단에서 뺐습니다.`);
+      return '';
+    });
+  }
+
+  $('asg-manage-btn').addEventListener('click', () => {
+    asgEditing = null;
+    asgDeleting = null;
+    asgChanged = false;
+    showError($('asg-error'), '');
+    asgDialog.showModal();
+    loadAssignees();     // 다른 사람이 바꿨을 수 있으니 열 때마다 최신으로
+  });
+  $('asg-close').addEventListener('click', () => asgDialog.close());
+  asgDialog.addEventListener('close', () => {
+    // 이름이 바뀌었을 수 있으니 목록·검색 결과를 다시 읽는다 (열려 있던 상세는 유지)
+    if (asgChanged) { invalidateHistory(); loadMonth({ selected: state.selected }); }
+  });
+  $('asg-add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    addAssignee($('asg-add-input').value.trim());
+  });
 
   // ───────────── 초기화 ─────────────
   const devSelect = form.elements.device;

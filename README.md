@@ -40,6 +40,7 @@ Dashboard → **SQL Editor** → `supabase/schema.sql` 내용 전체를 붙여�
 | 객체 | 설명 |
 |---|---|
 | `cs_tickets` | CS 테이블. 제목·상태·상태 메모·담당자(`assignee`)·티켓 담당(`ticket_assignee`) 포함. 타임라인·티켓은 `text[]` 배열 |
+| `cs_assignees` · `rename_cs_assignee()` | CS 담당 명단과 이름 수정 함수(명단·기존 CS 를 한 번에 변경). 처음 실행 시 기존 CS 의 담당자 이름으로 명단을 채움 |
 | `cs_monthly_summaries` | 월간 요약. `content`(마크다운) + `issues`/`notes`(jsonb, 화면 필터용) |
 | `cs_tickets_stamp` 트리거 | `created_by / updated_by / updated_at` 자동 기록 |
 | RLS 정책 4개 | `authenticated` 역할만 select/insert/update/delete |
@@ -124,7 +125,7 @@ gh api repos/<계정또는조직>/cs-dashboard/pages --jq '.html_url,.status'
 | 날짜 역순 정렬 | `received_at desc, created_at desc` |
 | 월별 보기 | ◀ ▶ 이번 달. 월 경계는 KST 기준 |
 | 밀린 미해결 | 그 달 목록 아래 별도 구역 「밀린 미해결」에 보고 있는 달 이전에 접수돼 아직 `완료`가 아닌 CS를 몇 달 전 건이든 모두, 오래된 순으로 경과일(D+N, 30일 이상은 빨강)과 함께 표시. 제목에 접수 월별 건수(예: 10월 5 · 9월 1 · 8월 1). 상세 패널에서 상태 변경·이력 추가·담당 변경·수정 가능(수정해도 보던 달에 머묾). 완료로 바꾸면 다음 조회부터 빠짐. 상단 KPI·CSV·월간 요약은 그 달 접수분 기준이고, 미해결 KPI 아래에 밀린 미해결 건수만 함께 표시 |
-| 담당자 | **CS 담당**은 CS마다 직접 기록(상세 패널 「담당 변경」). **티켓 담당**은 YouTrack·Jira 에서 자동으로 읽음 (아래 티켓 연동) |
+| 담당자 | **CS 담당**은 팀 공용 명단(`cs_assignees`)에서 드롭다운으로 선택. 왼쪽 「담당자별」 옆 「CS 담당 관리」에서 추가·이름 수정·삭제(이름 수정 시 기존 CS 도 함께 변경, 삭제는 명단에서만 빠짐). **티켓 담당**은 YouTrack·Jira 에서 자동으로 읽음 (아래 티켓 연동) |
 | 티켓 연동 | 목록·상세에 CS 담당 · CS 상태 · 티켓 담당 · 티켓 상태를 함께 표시. 티켓 담당·상태는 CS 의 티켓 칸(`NRF-4817`, `CLDA-82` 또는 URL)으로 YouTrack·Jira 를 조회한 값 |
 | 필터 | 왼쪽 패널의 주요 이슈(요약에서 생성)·기기별·담당자별 막대를 눌러 목록 필터. 검색어와 AND |
 | 전체 기간 검색 | 검색창 옆 「전체 기간」을 켜고 검색하면 모든 달의 CS에서 찾아 결과를 이번 달 · 최근 30일 · 최근 1년 · 1년 이상 전으로 묶어 최신순으로 표시(접수일 YY-MM-DD). 결과에서도 상세·상태 변경·이력 추가·수정 가능, 보던 달 유지. 켤 때마다 최신으로 다시 읽고, 체크 상태는 브라우저에 기억 |

@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261028-3">
-  <link rel="stylesheet" href="css/style.css?v=20261028-3">
+  <meta name="app-version" content="20261029">
+  <link rel="stylesheet" href="css/style.css?v=20261029">
 </head>
 <body>
   <!-- 로그인 -->
@@ -104,7 +104,7 @@
         <div class="side-title"><h3>기기별 · 눌러서 필터</h3></div>
         <div id="device-list" class="device-list"></div>
 
-        <div class="side-title"><h3>담당자별 · 눌러서 필터</h3></div>
+        <div class="side-title"><h3>담당자별 · 눌러서 필터</h3><button id="asg-manage-btn" class="link-btn" type="button">CS 담당 관리</button></div>
         <div id="assignee-list" class="device-list"></div>
 
         <details class="notes-box">
@@ -211,7 +211,7 @@
         <label>버전<input name="version" maxlength="100"></label>
         <label>상태<select name="status"></select></label>
         <label>상태 메모<input name="status_note" maxlength="50" placeholder="예) 로그 대기"></label>
-        <label>담당자 (개발팀)<input name="assignee" maxlength="100" list="assignee-names" placeholder="예) 오민식"></label>
+        <label>CS 담당<select name="assignee"></select></label>
         <label>티켓 담당<input name="ticket_assignee" maxlength="100" list="assignee-names" placeholder="티켓을 처리 중인 사람"></label>
       </div>
       <datalist id="assignee-names"></datalist>
@@ -252,12 +252,31 @@
     </form>
   </dialog>
 
+  <!-- CS 담당 명단 관리 -->
+  <dialog id="asg-dialog" class="asg-dialog">
+    <div class="cs-form">
+      <header class="dialog-head">
+        <h2>CS 담당 관리</h2>
+        <button id="asg-close" class="btn icon xs" type="button" aria-label="닫기">
+          <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </header>
+      <p class="muted small">팀 공용 명단입니다. 이름을 고치면 그 이름으로 된 기존 CS도 함께 바뀝니다. 삭제하면 명단에서만 빠지고 기존 CS의 이름은 남습니다.</p>
+      <form id="asg-add-form" class="asg-add">
+        <input id="asg-add-input" maxlength="100" placeholder="새 담당자 이름" required>
+        <button class="btn primary small" type="submit">추가</button>
+      </form>
+      <ul id="asg-items" class="asg-items"></ul>
+      <p id="asg-error" class="error" hidden></p>
+    </div>
+  </dialog>
+
   <div id="toast" class="toast" hidden></div>
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261028-3"></script>
-  <script src="js/lib.js?v=20261028-3"></script>
-  <script src="js/app.js?v=20261028-3"></script>
+  <script src="js/config.js?v=20261029"></script>
+  <script src="js/lib.js?v=20261029"></script>
+  <script src="js/app.js?v=20261029"></script>
 </body>
 </html>

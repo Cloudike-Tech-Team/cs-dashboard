@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261029">
-  <link rel="stylesheet" href="css/style.css?v=20261029">
+  <meta name="app-version" content="20261104">
+  <link rel="stylesheet" href="css/style.css?v=20261104">
 </head>
 <body>
   <!-- 로그인 -->
@@ -101,6 +101,9 @@
         </div>
         <div id="issue-list" class="issue-list"></div>
 
+        <div class="side-title"><h3>심각도별 · 눌러서 필터</h3></div>
+        <div id="severity-list" class="device-list"></div>
+
         <div class="side-title"><h3>기기별 · 눌러서 필터</h3></div>
         <div id="device-list" class="device-list"></div>
 
@@ -151,6 +154,7 @@
         <div class="detail-body">
           <div>
             <span id="detail-status" class="status-pill"></span>
+            <span id="detail-severity-pill" class="sev-badge big" hidden></span>
             <h2 id="detail-title" class="detail-title"></h2>
           </div>
           <dl class="meta">
@@ -159,6 +163,7 @@
             <dt>접수</dt><dd id="detail-received" class="mono"></dd>
             <dt>접수자</dt><dd id="detail-reporter"></dd>
             <dt>CS 담당</dt><dd id="detail-assignee"></dd>
+            <dt>심각도</dt><dd id="detail-severity"></dd>
             <dt>CS 상태</dt><dd id="detail-cs-status"></dd>
             <dt>티켓 담당</dt><dd id="detail-ticket-assignee"></dd>
             <dt>티켓 상태</dt><dd id="detail-ticket-state"></dd>
@@ -209,6 +214,7 @@
         <label>날짜 *<input name="received_at" type="datetime-local" required></label>
         <label>기기 *<select name="device" required></select></label>
         <label>버전<input name="version" maxlength="100"></label>
+        <label>심각도<select name="severity"></select></label>
         <label>상태<select name="status"></select></label>
         <label>상태 메모<input name="status_note" maxlength="50" placeholder="예) 로그 대기"></label>
         <label>CS 담당<select name="assignee"></select></label>
@@ -275,8 +281,8 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261029"></script>
-  <script src="js/lib.js?v=20261029"></script>
-  <script src="js/app.js?v=20261029"></script>
+  <script src="js/config.js?v=20261104"></script>
+  <script src="js/lib.js?v=20261104"></script>
+  <script src="js/app.js?v=20261104"></script>
 </body>
 </html>

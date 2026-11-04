@@ -24,6 +24,8 @@ create table if not exists public.cs_tickets (
   status_note  text not null default '' check (char_length(status_note) <= 50), -- 상태 메모(예: 로그 대기)
   assignee     text not null default '' check (char_length(assignee) <= 100),   -- 개발팀 CS 담당자
   ticket_assignee text not null default '' check (char_length(ticket_assignee) <= 100), -- 티켓 처리 중인 사람
+  severity     text not null default 'normal'
+                 check (severity in ('normal', 'major', 'critical', 'hotfix')), -- 심각도(보통·중요·크리티컬·핫픽스)
   created_by   uuid references auth.users(id) on delete set null,
   updated_by   uuid references auth.users(id) on delete set null,
   created_at   timestamptz not null default now(),
@@ -49,6 +51,14 @@ alter table public.cs_tickets
                                             check (char_length(assignee) <= 100),
   add column if not exists ticket_assignee text not null default ''
                                             check (char_length(ticket_assignee) <= 100);
+
+-- 심각도 컬럼 (기존 설치에 추가. 기존 CS 는 모두 '보통').
+-- 목록이 바뀌면 여기 제약과 js/lib.js 의 SEVERITY 를 함께 바꾼다.
+alter table public.cs_tickets
+  add column if not exists severity text not null default 'normal';
+alter table public.cs_tickets drop constraint if exists cs_tickets_severity_check;
+alter table public.cs_tickets add constraint cs_tickets_severity_check
+  check (severity in ('normal', 'major', 'critical', 'hotfix'));
 
 -- 상태 목록이 바뀌면 여기 제약과 js/lib.js 의 STATUS, functions/ai/lib.ts 의 Status 를 함께 바꾼다.
 -- (컬럼이 이미 있던 설치는 위 add column 이 건너뛰므로 제약을 다시 건다)

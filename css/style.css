@@ -198,6 +198,13 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .col-who { font-size: 12px; color: var(--text-2); }
 .col-what { display: flex; align-items: center; gap: 8px; }
 .row-title { font-size: 13px; font-weight: 600; letter-spacing: -.01em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sev-badge {
+  flex: none; font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 5px; border-radius: 2px;
+  color: var(--s); border: 1px solid var(--s); background: color-mix(in srgb, var(--s) 8%, #FFFFFF);
+}
+.sev-badge.big { display: inline-block; font-size: 12px; line-height: 18px; margin: 0 0 6px 8px; vertical-align: top; }
+.device-btn:disabled { cursor: default; opacity: .45; }
+.device-btn:disabled:hover { background: none; }
 .row-ticket { font-size: 11px; flex: none; padding: 0 5px; border: 1px solid var(--line); line-height: 16px; }
 .col-device { font-size: 12px; }
 .col-asg { font-size: 12px; color: var(--text-2); }

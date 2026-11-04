@@ -16,6 +16,17 @@
     done:    { label: '완료',        color: '#15803D' },
     unknown: { label: '원인 미확인', color: '#6B7280' },
   };
+  // 심각도. 순서가 곧 select 표시 순서(가벼운 → 급한). 키는 DB check 제약(schema.sql)과 같아야 한다.
+  // 보통은 기본값이라 목록에 배지를 달지 않는다.
+  const SEVERITY = {
+    normal:   { label: '보통',     color: '#6B7280' },
+    major:    { label: '중요',     color: '#B45309' },
+    critical: { label: '크리티컬', color: '#B91C1C' },
+    hotfix:   { label: '핫픽스',   color: '#7C3AED' },
+  };
+  function severityKey(row) { return SEVERITY[row.severity] ? row.severity : 'normal'; }
+  function severityDef(row) { return SEVERITY[severityKey(row)]; }
+
   const ISSUE_COLORS = ['#B45309', '#1D4ED8', '#0F766E', '#6B7280', '#7C3AED'];
 
   function statusDef(row) { return STATUS[row.status] || STATUS.open; }
@@ -146,6 +157,7 @@
     if (!filter) return rows;
     if (filter.type === 'device') return rows.filter((r) => r.device === filter.value);
     if (filter.type === 'status') return rows.filter((r) => (STATUS[r.status] ? r.status : 'open') === filter.value);
+    if (filter.type === 'severity') return rows.filter((r) => severityKey(r) === filter.value);
     if (filter.type === 'assignee') return rows.filter((r) => (r.assignee || '') === filter.value);
     const issue = issues[filter.value];
     if (!issue) return rows;
@@ -158,12 +170,12 @@
     if (!needle) return true;
     const ytText = ticketInfos(row, yt).flatMap((x) => (x.yt ? [x.yt.state, ...x.yt.assignees] : []));
     return [...ytText, row.title, row.reporter, row.customer, row.version, row.description, row.notes,
-      statusLabel(row), row.assignee, row.ticket_assignee, ...(row.timeline || []), ...(row.tickets || [])]
+      statusLabel(row), severityKey(row) === 'normal' ? '' : severityDef(row).label, row.assignee, row.ticket_assignee, ...(row.timeline || []), ...(row.tickets || [])]
       .some((v) => (v || '').toLowerCase().includes(needle));
   }
 
   return {
-    STATUS, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

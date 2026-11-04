@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261029';
+  const APP_VERSION = '20261104';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -49,7 +49,7 @@
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
     summaryBusyMonth: null,    // 생성 중인 월 ('YYYY-MM'). 다른 달을 보고 있으면 "생성 중" 을 표시하지 않음
-    filter: null,              // null | { type: 'issue'|'device'|'assignee'|'status', value }
+    filter: null,              // null | { type: 'issue'|'device'|'assignee'|'status'|'severity', value }
     selected: null,            // 상세 패널에 열린 row id
     quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
     yt: {},                    // 트래커(YouTrack·Jira) 티켓 캐시 { 'NRF-1': { source, summary, state, resolved, assignees, url } | null(없음) }
@@ -366,6 +366,7 @@
     if (!f) return '';
     if (f.type === 'device') return f.value;
     if (f.type === 'status') return L.STATUS[f.value] ? L.STATUS[f.value].label : f.value;
+    if (f.type === 'severity') return L.SEVERITY[f.value] ? `심각도 ${L.SEVERITY[f.value].label}` : f.value;
     if (f.type === 'assignee') return f.value ? `담당 ${f.value}` : '담당 미지정';
     const issue = (state.summary && state.summary.issues || [])[f.value];
     return issue ? issue.label : '';
@@ -386,6 +387,7 @@
       el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
       el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
       el('span', { class: 'col-what' },
+        severityBadge(r),
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
         carry ? el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: `접수 후 ${age}일` }) : null,
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
@@ -398,6 +400,15 @@
     b.style.setProperty('--c', L.statusColor(r));
     b.addEventListener('click', () => selectRow(r.id));
     return b;
+  }
+
+  // 심각도 배지. 보통(기본값)은 달지 않아 급한 건만 눈에 띄게 한다
+  function severityBadge(r) {
+    if (L.severityKey(r) === 'normal') return null;
+    const s = L.severityDef(r);
+    const n = el('span', { class: 'sev-badge', text: s.label, title: `심각도 ${s.label}` });
+    n.style.setProperty('--s', s.color);
+    return n;
   }
 
   function ticketAsgNode(r, cls) {
@@ -481,6 +492,12 @@
     $('detail-when').textContent = fmtDateTime(r.received_at);
     $('detail-status').textContent = L.statusLabel(r);
     $('detail-status').style.setProperty('--c', L.statusColor(r));
+    const sev = L.severityDef(r);
+    $('detail-severity-pill').hidden = L.severityKey(r) === 'normal';
+    $('detail-severity-pill').textContent = sev.label;
+    $('detail-severity-pill').style.setProperty('--s', sev.color);
+    $('detail-severity').textContent = sev.label;
+    $('detail-severity').className = L.severityKey(r) === 'normal' ? 'muted' : 'bold';
     $('detail-title').textContent = r.title || '(제목 없음)';
     $('detail-customer').textContent = r.customer;
     $('detail-device').textContent = deviceLine(r);
@@ -524,13 +541,16 @@
       const sel = el('select', { 'aria-label': '상태' },
         Object.entries(L.STATUS).map(([k, v]) => el('option', { value: k, text: v.label })));
       sel.value = r.status;
+      const sev = el('select', { 'aria-label': '심각도' },
+        Object.entries(L.SEVERITY).map(([k, v]) => el('option', { value: k, text: `심각도 ${v.label}` })));
+      sev.value = L.severityKey(r);
       const note = el('input', { type: 'text', maxlength: '50', placeholder: '상태 메모 (예: 로그 대기)' });
       note.value = r.status_note;
       // 상태를 바꾸면 이전 상태의 메모("로그 대기")가 새 상태의 라벨로 남지 않게 비운다
       sel.addEventListener('change', () => { note.value = sel.value === r.status ? r.status_note : ''; });
-      const submit = () => saveQuick(r, { status: sel.value, status_note: note.value.trim() });
+      const submit = () => saveQuick(r, { status: sel.value, severity: sev.value, status_note: note.value.trim() });
       note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
-      box.append(el('div', { class: 'quick-form' }, sel, note, quickButtons(submit)));
+      box.append(el('div', { class: 'quick-form' }, sel, sev, note, quickButtons(submit)));
       sel.focus();
     } else if (state.quick === 'history') {
       const input = el('input', { type: 'text', maxlength: '2000', placeholder: '처리 내용' });
@@ -684,6 +704,22 @@
       return b;
     }));
 
+    // 심각도별 (4단계 모두 표시, 0건은 비활성)
+    const sevCounts = Object.keys(L.SEVERITY).map((k) => [k, state.rows.filter((r) => L.severityKey(r) === k).length]);
+    const sevMax = Math.max(1, ...sevCounts.map(([, n]) => n));
+    $('severity-list').replaceChildren(...sevCounts.map(([k, n]) => {
+      const fill = el('span');
+      fill.style.width = `${Math.round((n / sevMax) * 100)}%`;
+      fill.style.background = L.SEVERITY[k].color;
+      const b = el('button', { type: 'button', class: 'device-btn' + (isActive('severity', k) ? ' active' : '') },
+        el('span', { class: 'lbl', text: L.SEVERITY[k].label }),
+        el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
+        el('b', { text: String(n) }));
+      b.disabled = n === 0 && !isActive('severity', k);
+      b.addEventListener('click', () => toggleFilter('severity', k));
+      return b;
+    }));
+
     // 기기별
     const devBox = $('device-list');
     const counts = countBy(state.rows, 'device');
@@ -791,6 +827,7 @@
       f.version.value = row.version;
       f.title.value = row.title;
       f.status.value = row.status;
+      f.severity.value = L.severityKey(row);
       f.status_note.value = row.status_note;
       fillAssigneeSelect(f.assignee, row.assignee || '');
       f.ticket_assignee.value = row.ticket_assignee || '';
@@ -804,6 +841,7 @@
       try { f.reporter.value = localStorage.getItem(LS_REPORTER) || ''; } catch { /* 저장소 차단 시 무시 */ }
       f.received_at.value = toLocalInput(new Date().toISOString());
       f.status.value = 'open';
+      f.severity.value = 'normal';
       fillAssigneeSelect(f.assignee, '');
       $('form-meta').textContent = '';
     }
@@ -840,6 +878,7 @@
       version: f.version.value.trim(),
       title: f.title.value.trim(),
       status: f.status.value,
+      severity: f.severity.value,
       status_note: f.status_note.value.trim(),
       assignee: f.assignee.value.trim(),
       ticket_assignee: f.ticket_assignee.value.trim(),
@@ -855,6 +894,7 @@
     if (!DEVICES.includes(payload.device)) missing.push('기기');
     if (!payload.title) missing.push('제목');
     if (!L.STATUS[payload.status]) missing.push('상태');
+    if (!L.SEVERITY[payload.severity]) missing.push('심각도');
     return { payload, missing };
   }
 
@@ -1052,10 +1092,10 @@
     if (state.loading) return;
     if ($('list-error').textContent) { toast('목록을 불러오지 못해 내보낼 수 없습니다.'); return; }
     if (!state.rows.length) { toast('내보낼 CS가 없습니다.'); return; }
-    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', 'CS 상태', 'CS 담당', '티켓 담당', '티켓 상태', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
+    const header = ['접수 일시', '접수자', '고객사/유저', '기기', '버전', '제목', '심각도', 'CS 상태', 'CS 담당', '티켓 담당', '티켓 상태', '현상설명', '특이사항', '처리 타임라인', '티켓', '등록 일시', '최종 수정'];
     const lines = [header, ...state.rows.map((r) => [
       fmtDateTime(r.received_at), r.reporter, r.customer, r.device, r.version,
-      r.title, L.statusLabel(r), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
+      r.title, L.severityDef(r).label, L.statusLabel(r), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
       L.ticketInfos(r, state.yt).filter((x) => x.yt).map((x) => `${x.id} ${x.yt.state}`).join('\n'),
       r.description, r.notes, r.timeline.join('\n'), r.tickets.join('\n'),
       fmtDateTime(r.created_at), fmtDateTime(r.updated_at),
@@ -1217,6 +1257,7 @@
   const devSelect = form.elements.device;
   devSelect.append(el('option', { value: '', text: '선택하세요' }));
   DEVICES.forEach((d) => devSelect.append(el('option', { value: d, text: d })));
+  Object.entries(L.SEVERITY).forEach(([k, v]) => form.elements.severity.append(el('option', { value: k, text: v.label })));
   const statusSelect = form.elements.status;
   Object.entries(L.STATUS).forEach(([k, v]) => statusSelect.append(el('option', { value: k, text: v.label })));
   statusSelect.addEventListener('change', () => {

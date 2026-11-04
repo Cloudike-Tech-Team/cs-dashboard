@@ -190,3 +190,18 @@ test('recencyKey / groupByRecency: 이번 달 → 30일 → 1년 → 그 이전,
   ], now);
   assert.deepEqual(g.map((x) => [x.label, x.rows.map((r) => r.id)]), [['이번 달', ['a', 'c']], ['1년 이상 전', ['b']]]);
 });
+
+test('SEVERITY: 보통 → 중요 → 크리티컬 → 핫픽스, 값이 없거나 이상하면 보통', () => {
+  assert.deepEqual(Object.values(L.SEVERITY).map((v) => v.label), ['보통', '중요', '크리티컬', '핫픽스']);
+  assert.equal(L.severityKey(row()), 'normal');
+  assert.equal(L.severityKey(row({ severity: 'weird' })), 'normal');
+  assert.equal(L.severityDef(row({ severity: 'hotfix' })).label, '핫픽스');
+});
+
+test('applyFilter·matchesSearch: 심각도', () => {
+  const rows = [row({ id: 1, severity: 'critical' }), row({ id: 2 }), row({ id: 3, severity: 'normal' })];
+  assert.deepEqual(L.applyFilter(rows, { type: 'severity', value: 'critical' }, []).map((r) => r.id), [1]);
+  assert.deepEqual(L.applyFilter(rows, { type: 'severity', value: 'normal' }, []).map((r) => r.id), [2, 3]);
+  assert.equal(L.matchesSearch(row({ severity: 'critical' }), '크리티컬'), true);
+  assert.equal(L.matchesSearch(row(), '보통'), false);
+});

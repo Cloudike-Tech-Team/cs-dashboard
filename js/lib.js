@@ -20,9 +20,9 @@
   // 보통은 기본값이라 목록에 배지를 달지 않는다.
   const SEVERITY = {
     normal:   { label: '보통',     color: '#6B7280' },
-    major:    { label: '중요',     color: '#B45309' },
-    critical: { label: '크리티컬', color: '#B91C1C' },
-    hotfix:   { label: '핫픽스',   color: '#7C3AED' },
+    major:    { label: '중요',     color: '#EA580C' },   // 주황
+    critical: { label: '크리티컬', color: '#DB2777' },   // 분홍
+    hotfix:   { label: '핫픽스',   color: '#DC2626' },   // 빨강
   };
   function severityKey(row) { return SEVERITY[row.severity] ? row.severity : 'normal'; }
   function severityDef(row) { return SEVERITY[severityKey(row)]; }

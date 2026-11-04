@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261104';
+  const APP_VERSION = '20261104-2';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -382,12 +382,13 @@
     const age = carry ? L.daysSince(r.received_at) : 0;
     const withYear = kind === 'history' || (carry && p.year !== state.month.slice(0, 4));
     const when = withYear ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
-    const b = el('button', { type: 'button', class: 'cs-row' + (carry ? ' carry' : '') + (state.selected === r.id ? ' active' : '') },
+    // 행 안에 심각도 select 를 넣어야 해서 <button> 대신 role=button 인 div (button 안에는 select 를 못 넣는다)
+    const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (carry ? ' carry' : '') + (state.selected === r.id ? ' active' : '') },
       el('span', { class: 'col-when mono', text: when, title: `${kind === 'month' ? '' : `${p.year}-`}${p.month}-${p.day} ${p.hour}:${p.minute} (${WEEKDAY_KO[p.weekday] || p.weekday})` }),
       el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
       el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
+      el('span', { class: 'col-sev' }, severitySelect(r)),
       el('span', { class: 'col-what' },
-        severityBadge(r),
         el('span', { class: 'row-title', text: r.title || '(제목 없음)' }),
         carry ? el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: `접수 후 ${age}일` }) : null,
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: `티켓 ${r.tickets.length}개` }) : null),
@@ -399,16 +400,47 @@
     );
     b.style.setProperty('--c', L.statusColor(r));
     b.addEventListener('click', () => selectRow(r.id));
+    b.addEventListener('keydown', (e) => {
+      if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectRow(r.id); }
+    });
     return b;
   }
 
-  // 심각도 배지. 보통(기본값)은 달지 않아 급한 건만 눈에 띄게 한다
-  function severityBadge(r) {
-    if (L.severityKey(r) === 'normal') return null;
-    const s = L.severityDef(r);
-    const n = el('span', { class: 'sev-badge', text: s.label, title: `심각도 ${s.label}` });
-    n.style.setProperty('--s', s.color);
-    return n;
+  // 목록에서 바로 고치는 심각도 select. 보통은 흐리게, 나머지는 색 배지처럼 보인다.
+  // 행 클릭(상세 열기)으로 번지지 않게 막는다.
+  function severitySelect(r) {
+    const key = L.severityKey(r);
+    const sel = el('select', { class: 'sev-select' + (key === 'normal' ? ' normal' : ''), 'aria-label': `${r.title || 'CS'} 심각도`, title: '눌러서 심각도 변경' },
+      Object.entries(L.SEVERITY).map(([k, v]) => el('option', { value: k, text: v.label })));
+    sel.value = key;
+    sel.style.setProperty('--s', L.SEVERITY[key].color);
+    sel.disabled = state.busy;
+    ['click', 'keydown'].forEach((t) => sel.addEventListener(t, (e) => e.stopPropagation()));
+    sel.addEventListener('change', () => saveSeverity(r, sel));
+    return sel;
+  }
+
+  async function saveSeverity(r, sel) {
+    if (state.busy) { sel.value = L.severityKey(r); return; }
+    state.busy = true;
+    sel.disabled = true;
+    const { data, error } = await sb.from('cs_tickets').update({ severity: sel.value })
+      .eq('id', r.id)
+      .eq('updated_at', r.updated_at)   // 수정 모달과 같은 낙관적 잠금
+      .select();
+    state.busy = false;
+    if (error || data.length === 0) {
+      sel.value = L.severityKey(r);
+      sel.disabled = false;
+      toast(error ? '심각도 저장 실패: ' + error.message : CONFLICT_MSG);
+      return;
+    }
+    [state.rows, state.carry, state.history || []].forEach((list) => {
+      const idx = list.findIndex((x) => x.id === r.id);
+      if (idx >= 0) list[idx] = data[0];
+    });
+    toast(`심각도를 ${L.severityDef(data[0]).label}(으)로 바꿨습니다.`);
+    renderAll();
   }
 
   function ticketAsgNode(r, cls) {
@@ -631,6 +663,17 @@
     $('kpi-ticketed-of').textContent = `/ ${k.total}`;
     $('kpi-ticketed-sub').textContent = k.total ? `${k.total - k.ticketed}건은 티켓 없음` : '';
     $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
+
+    // 심각도: 이 달 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
+    const urgent = ['hotfix', 'critical', 'major'];
+    $('kpi-sev').replaceChildren(...urgent.map((key) => {
+      const n = state.rows.filter((r) => r.status !== 'done' && L.severityKey(r) === key).length;
+      const b = el('button', { type: 'button', class: 'legend-btn sev-kpi-btn' + (isActive('severity', key) ? ' active' : '') + (n ? '' : ' zero') },
+        el('span', { class: 'dot' }), el('span', { text: L.SEVERITY[key].label }), el('b', { text: String(n) }));
+      b.style.setProperty('--c', L.SEVERITY[key].color);
+      b.addEventListener('click', () => toggleFilter('severity', key));
+      return b;
+    }));
 
     // 상태별 도넛 + 범례(누르면 상태 필터). 0건인 상태는 그리지 않는다
     const C = 2 * Math.PI * 15.5;

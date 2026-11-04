@@ -167,7 +167,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .notes-list .cust { font-family: var(--mono); font-weight: 600; color: var(--text); margin-right: 4px; }
 
 /* 목록 */
-.list-head, .cs-row { display: grid; grid-template-columns: 60px 130px 110px minmax(0, 1fr) 72px 84px 110px 110px; gap: 12px; align-items: center; }
+.list-head, .cs-row { display: grid; grid-template-columns: 60px 130px 110px 76px minmax(0, 1fr) 72px 84px 110px 110px; gap: 12px; align-items: center; }
 .list-head {
   padding: 6px 20px; border-bottom: 1px solid var(--line);
   font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em;
@@ -202,6 +202,20 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
   flex: none; font-size: 11px; font-weight: 600; line-height: 16px; padding: 0 5px; border-radius: 2px;
   color: var(--s); border: 1px solid var(--s); background: color-mix(in srgb, var(--s) 8%, #FFFFFF);
 }
+/* 목록의 심각도 select: 배지처럼 보이고 누르면 바로 변경 */
+.col-sev { display: flex; align-items: center; }
+.sev-select {
+  width: auto; max-width: 100%; padding: 0 16px 0 6px; height: 20px; font-size: 11px; font-weight: 600; line-height: 18px;
+  color: var(--s); border: 1px solid var(--s); border-radius: 2px; cursor: pointer;
+  background: color-mix(in srgb, var(--s) 8%, #FFFFFF) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%236B7280'/%3E%3C/svg%3E") no-repeat right 5px center;
+  appearance: none; -webkit-appearance: none;
+}
+.sev-select.normal { color: var(--muted); border-color: transparent; background-color: transparent; font-weight: 500; }
+.cs-row:hover .sev-select.normal { border-color: var(--line); background-color: #FFFFFF; }
+.sev-select:disabled { opacity: .5; cursor: default; }
+.cs-row:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.sev-kpi { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }
+.sev-kpi-btn.zero { opacity: .45; }
 .sev-badge.big { display: inline-block; font-size: 12px; line-height: 18px; margin: 0 0 6px 8px; vertical-align: top; }
 .device-btn:disabled { cursor: default; opacity: .45; }
 .device-btn:disabled:hover { background: none; }
@@ -279,6 +293,7 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
   .col-what { grid-column: 2; grid-row: 2; }
   .col-tasg { grid-column: 3; grid-row: 2; }
   .col-tstate { grid-column: 4; grid-row: 2; }
+  .col-sev { grid-column: 1; grid-row: 2; }
   .kpis { flex-wrap: wrap; } .kpi-donut { flex: 1 1 100%; } .kpi-tickets { border-left: 0; }
 }
 @media (max-width: 640px) {

@@ -100,6 +100,10 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .ring-seg { fill: none; stroke-width: 4; transition: stroke-dasharray .25s; }
 .ring-seg.dim { opacity: .25; }
 .ring-center { display: flex; flex-direction: column; gap: 2px; min-width: 56px; }
+/* 원형 그래프 + 접수 건수. 필터가 걸려 있을 때만 눌러서 해제 */
+.ring-btn { font: inherit; color: inherit; background: none; border: 0; padding: 0; margin: 0; display: flex; align-items: center; gap: 18px; text-align: left; cursor: default; border-radius: 4px; }
+.ring-btn.can-clear { cursor: pointer; }
+.ring-btn.can-clear:hover .ring { opacity: .8; }
 .ring-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, max-content)); gap: 2px 14px; flex: 1; }
 .legend-btn {
   font: inherit; font-size: 12px; display: flex; align-items: center; gap: 6px; padding: 3px 6px; margin: 0 -6px;

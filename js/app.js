@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-3';
+  const APP_VERSION = '20261105-4';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -688,6 +688,10 @@
     $('kpi-ticketed').textContent = String(k.ticketed);
     $('kpi-ticketed-of').textContent = `/ ${k.total}`;
     $('kpi-ticketed-sub').textContent = k.total ? t('kpi.noTicket', { n: k.total - k.ticketed }) : '';
+    // 원형 그래프: 필터가 걸려 있으면 눌러서 해제
+    $('kpi-ring-btn').classList.toggle('can-clear', !!state.filter);
+    $('kpi-ring-btn').title = state.filter ? t('kpi.ringClear') : '';
+    $('kpi-ring-btn').setAttribute('aria-label', state.filter ? t('kpi.ringClear') : t('kpi.ringTitle'));
     $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
 
     // 심각도: 이 달 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
@@ -835,6 +839,7 @@
       : [el('p', { class: 'muted', text: s ? t('common.none') : '—' })]));
   }
   $('filter-clear').addEventListener('click', () => { state.filter = null; renderKpi(); renderSidebar(); renderList(); });
+  $('kpi-ring-btn').addEventListener('click', () => { if (!state.filter) return; state.filter = null; renderKpi(); renderSidebar(); renderList(); });
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => { state.month = shiftMonth(state.month, -1); loadMonth(); });

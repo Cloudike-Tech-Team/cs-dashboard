@@ -3,8 +3,41 @@ import { DEVICES, type Device } from './prompts.ts';
 
 export const MAX_PARSE_CHARS = 8000;
 
+// 사용자에게 보이는 오류 문구 (요청의 lang 으로 고른다)
+export const MSG: Record<string, { ko: string; en: string }> = {
+  emptyBody: { ko: '요청 본문이 비어 있습니다.', en: 'The request body is empty.' },
+  badIds: { ko: 'ids 는 1~{n}개의 문자열이어야 합니다.', en: 'ids must be 1 to {n} strings.' },
+  noText: { ko: '분석할 텍스트가 없습니다.', en: 'There is no text to analyze.' },
+  textTooLong: { ko: '텍스트가 너무 깁니다 (최대 {n}자).', en: 'The text is too long (max {n} characters).' },
+  badMonth: { ko: 'month 는 YYYY-MM 형식이어야 합니다.', en: 'month must be in YYYY-MM format.' },
+  badMode: { ko: 'mode 는 parse, summarize, translate, translate_backfill 중 하나여야 합니다.', en: 'mode must be parse, summarize, translate or translate_backfill.' },
+  postOnly: { ko: 'POST 만 지원합니다.', en: 'Only POST is supported.' },
+  noApiKey: { ko: 'ANTHROPIC_API_KEY 가 설정되지 않았습니다. supabase secrets set 으로 등록하세요.', en: 'ANTHROPIC_API_KEY is not set. Add it with supabase secrets set.' },
+  loginRequired: { ko: '로그인이 필요합니다.', en: 'Please sign in.' },
+  sessionInvalid: { ko: '로그인 세션이 유효하지 않습니다. 다시 로그인하세요.', en: 'Your session has expired. Sign in again.' },
+  refused: { ko: '{what}: 모델이 요청을 거부했습니다.', en: '{what}: the model refused the request.' },
+  truncated: { ko: '{what}: 출력이 잘렸습니다. 다시 시도하세요.', en: '{what}: the output was cut off. Try again.' },
+  badModelJson: { ko: '모델 응답을 해석하지 못했습니다. 다시 시도하세요.', en: 'Could not read the model response. Try again.' },
+  trLoadFailed: { ko: '번역 조회 실패: {error}', en: 'Could not load translations: {error}' },
+  trSaveFailed: { ko: '번역 저장 실패: {error}', en: 'Could not save translations: {error}' },
+  csLoadFailed: { ko: 'CS 목록 조회 실패: {error}', en: 'Could not load CS records: {error}' },
+  noRowsMonth: { ko: '{month} 에는 요약할 CS가 없습니다.', en: 'No CS to summarize in {month}.' },
+  summarySaveFailed: { ko: '요약 저장 실패: {error}', en: 'Could not save the summary: {error}' },
+  apiKeyWrong: { ko: 'Claude API 키가 잘못되었습니다.', en: 'The Claude API key is invalid.' },
+  rateLimited: { ko: 'Claude API 요청 한도에 걸렸습니다. 잠시 후 다시 시도하세요.', en: 'Claude API rate limit reached. Try again shortly.' },
+  apiError: { ko: 'Claude API 오류 ({status}): {error}', en: 'Claude API error ({status}): {error}' },
+  unknownError: { ko: '알 수 없는 오류: {error}', en: 'Unexpected error: {error}' },
+};
+export function msg(lang: string, key: string, params: Record<string, unknown> = {}): string {
+  const m = MSG[key];
+  const s = m ? (lang === 'en' ? m.en : m.ko) : key;
+  return s.replace(/\{(\w+)\}/g, (x, k) => (k in params ? String(params[k]) : x));
+}
+
+// key·params 를 들고 다니다가 응답할 때 요청 언어로 바꾼다. message 는 한국어(로그용)
 export class BadRequest extends Error {
   status = 400;
+  constructor(public key: string, public params: Record<string, unknown> = {}) { super(msg('ko', key, params)); }
 }
 
 export type Lang = 'ko' | 'en';
@@ -17,29 +50,29 @@ export type AiRequest = ParseRequest | SummarizeRequest | TranslateRequest | Bac
 export const MAX_TRANSLATE_IDS = 20;
 
 export function validateRequest(body: unknown): AiRequest {
-  if (!body || typeof body !== 'object') throw new BadRequest('요청 본문이 비어 있습니다.');
+  if (!body || typeof body !== 'object') throw new BadRequest('emptyBody');
   const b = body as Record<string, unknown>;
   const lang: Lang = b.lang === 'en' ? 'en' : 'ko';
   if (b.mode === 'translate') {
     const ids = b.ids;
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > MAX_TRANSLATE_IDS || !ids.every((x) => typeof x === 'string' && x)) {
-      throw new BadRequest(`ids 는 1~${MAX_TRANSLATE_IDS}개의 문자열이어야 합니다.`);
+      throw new BadRequest('badIds', { n: MAX_TRANSLATE_IDS });
     }
     return { mode: 'translate', ids: ids as string[], lang };
   }
   if (b.mode === 'translate_backfill') return { mode: 'translate_backfill', dry: b.dry === true, lang };
   if (b.mode === 'parse') {
     const text = typeof b.text === 'string' ? b.text.trim() : '';
-    if (!text) throw new BadRequest('분석할 텍스트가 없습니다.');
-    if (text.length > MAX_PARSE_CHARS) throw new BadRequest(`텍스트가 너무 깁니다 (최대 ${MAX_PARSE_CHARS}자).`);
+    if (!text) throw new BadRequest('noText');
+    if (text.length > MAX_PARSE_CHARS) throw new BadRequest('textTooLong', { n: MAX_PARSE_CHARS });
     return { mode: 'parse', text, lang };
   }
   if (b.mode === 'summarize') {
     const month = typeof b.month === 'string' ? b.month : '';
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequest('month 는 YYYY-MM 형식이어야 합니다.');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequest('badMonth');
     return { mode: 'summarize', month, lang };
   }
-  throw new BadRequest('mode 는 parse, summarize, translate, translate_backfill 중 하나여야 합니다.');
+  throw new BadRequest('badMode');
 }
 
 // 'YYYY-MM' → [from, to) ISO. KST(+09:00) 고정 오프셋.
@@ -73,9 +106,10 @@ export type Ticket = {
 };
 
 // "오민식(티켓 김개발)". 같은 사람이면 이름만, 둘 다 비면 "".
-export function assigneeText(r: Pick<Ticket, 'assignee' | 'ticket_assignee'>): string {
+export function assigneeText(r: Pick<Ticket, 'assignee' | 'ticket_assignee'>, lang: Lang = 'ko'): string {
   const a = r.assignee || '', t = r.ticket_assignee || '';
   if (!a && !t) return '';
+  if (lang === 'en') return !a ? `(ticket ${t})` : t && t !== a ? `${a} (ticket ${t})` : a;
   if (!a) return `(티켓 ${t})`;
   return t && t !== a ? `${a}(티켓 ${t})` : a;
 }
@@ -85,8 +119,14 @@ export const STATUS_LABEL: Record<Status, string> = {
 };
 
 // "처리 중(로그 대기)" 형태. 모델 입력과 마크다운에 공통 사용.
-export function statusText(r: Pick<Ticket, 'status' | 'status_note'>): string {
-  const base = STATUS_LABEL[r.status] ?? r.status;
+export const STATUS_LABEL_EN: Record<Status, string> = {
+  open: 'In progress', waiting: 'Waiting', delayed: 'Delayed', deploy: 'Awaiting deploy', done: 'Done', unknown: 'Cause unknown',
+};
+const DEVICE_EN: Record<string, string> = { '웹': 'Web', '기타': 'Other' };
+const MONTH_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function statusText(r: Pick<Ticket, 'status' | 'status_note'>, lang: Lang = 'ko'): string {
+  const base = (lang === 'en' ? STATUS_LABEL_EN : STATUS_LABEL)[r.status] ?? r.status;
   return r.status_note ? `${base}(${r.status_note})` : base;
 }
 
@@ -193,23 +233,20 @@ export const MAX_ISSUES = 5;
 export const MAX_NOTES = 5;
 
 // 구조화 출력이라 형태는 보장되지만 방어적으로 정리. 개수 제한은 여기서(스키마의 maxItems 는 미지원).
-export function normalizeSummary(raw: unknown): { issues: RawIssue[]; notes: Note[] } {
+export function normalizeSummary(raw: unknown): { issues: RawIssue[]; notes: Note[]; issuesEn: RawIssue[]; notesEn: Note[] } {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
   const obj = (v: unknown) => (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
   const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-  const issues = arr(o.issues).slice(0, MAX_ISSUES).map((x) => {
-    const i = obj(x);
-    return {
-      label: str(i.label),
-      detail: str(i.detail),
-      ticket_indexes: arr(i.ticket_indexes).filter((n): n is number => Number.isInteger(n)),
-    };
-  });
-  const notes = arr(o.notes).slice(0, MAX_NOTES)
-    .map((x) => { const n = obj(x); return { customer: str(n.customer), text: str(n.text) }; })
-    .filter((n) => n.text);
-  return { issues, notes };
+  const rawIssues = arr(o.issues).slice(0, MAX_ISSUES).map(obj);
+  const idx = (i: Record<string, unknown>) => arr(i.ticket_indexes).filter((n): n is number => Number.isInteger(n));
+  const issues = rawIssues.map((i) => ({ label: str(i.label), detail: str(i.detail), ticket_indexes: idx(i) }));
+  // 영어 칸이 비면 한국어 값 (예전 형식 응답 대비)
+  const issuesEn = rawIssues.map((i) => ({ label: str(i.label_en) || str(i.label), detail: str(i.detail_en) || str(i.detail), ticket_indexes: idx(i) }));
+  const rawNotes = arr(o.notes).slice(0, MAX_NOTES).map(obj).filter((n) => str(n.text));
+  const notes = rawNotes.map((n) => ({ customer: str(n.customer), text: str(n.text) }));
+  const notesEn = rawNotes.map((n) => ({ customer: str(n.customer), text: str(n.text_en) || str(n.text) }));
+  return { issues, notes, issuesEn, notesEn };
 }
 
 // 목록 번호(1부터, sortByReceived 순서) → 행 id. 범위 밖·중복은 버리고, 남는 id 가 없거나 라벨이 비면 이슈 제거.
@@ -235,34 +272,41 @@ export function clip(s: string, n: number): string {
 }
 
 // 미해결 목록은 LLM 에 맡기지 않고 status 로 만든다.
-export function unresolvedLines(rows: Ticket[]): string[] {
-  return sortByReceived(rows).filter((r) => r.status !== 'done').map((r) => {
-    const what = clip(oneLine(r.title) || oneLine(r.description) || '(내용 없음)', 80);
+// tr: 영어판에서 쓸 번역 칸 (id → en 번역). 없으면 원문
+export function unresolvedLines(rows: Ticket[], lang: Lang = 'ko', tr?: Map<string, TrFields>): string[] {
+  const en = lang === 'en';
+  return sortByReceived(rows).filter((r) => r.status !== 'done').map((r0) => {
+    const f = tr && tr.get(r0.id);
+    const r = f ? { ...r0, ...f } : r0;
+    const what = clip(oneLine(r.title) || oneLine(r.description) || (en ? '(no content)' : '(내용 없음)'), 80);
     // 처리 중: 메모 → 마지막 타임라인. 그 외 상태(대기·지연·배포대기·원인 미확인): 상태 이름(메모).
     const state = clip(r.status === 'open'
-      ? r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : '조치 이력 없음')
-      : statusText(r), 100);
+      ? r.status_note || (r.timeline.length ? oneLine(r.timeline[r.timeline.length - 1]) : (en ? 'No action yet' : '조치 이력 없음'))
+      : statusText(r, lang), 100);
     const tickets = r.tickets.length ? ` · ${clip(r.tickets.join(', '), 100)}` : '';
-    const who = assigneeText(r);
-    return `**${r.customer}** — ${what} · ${state}${tickets}${who ? ` · 담당 ${who}` : ''}`;
+    const who = assigneeText(r, lang);
+    return `**${r.customer}** — ${what} · ${state}${tickets}${who ? ` · ${en ? 'Owner' : '담당'} ${who}` : ''}`;
   });
 }
 
-export function buildSummaryMarkdown(month: string, rows: Ticket[], issues: Issue[], notes: Note[]): string {
+export function buildSummaryMarkdown(month: string, rows: Ticket[], issues: Issue[], notes: Note[], lang: Lang = 'ko', tr?: Map<string, TrFields>): string {
   const [year, mon] = month.split('-');
+  const en = lang === 'en';
+  const none = en ? '- None' : '- 없음';
+  const devices = deviceCounts(rows).map(([d, n]) => `${en ? DEVICE_EN[d] || d : d} ${n}`).join(' · ');
   const lines: string[] = [
-    `## ${year}년 ${Number(mon)}월 CS 요약`, '',
-    `**총 ${rows.length}건** · ` + deviceCounts(rows).map(([d, n]) => `${d} ${n}`).join(' · '), '',
-    '### 주요 이슈',
+    en ? `## CS summary · ${MONTH_EN[Number(mon) - 1]} ${year}` : `## ${year}년 ${Number(mon)}월 CS 요약`, '',
+    (en ? `**${rows.length} total** · ` : `**총 ${rows.length}건** · `) + devices, '',
+    en ? '### Key issues' : '### 주요 이슈',
   ];
-  if (issues.length) issues.forEach((is, i) => lines.push(`${i + 1}. **${is.label}** (${is.ticket_ids.length}건) — ${is.detail}`));
-  else lines.push('- 없음');
-  lines.push('', '### 미해결');
-  const un = unresolvedLines(rows);
-  lines.push(...(un.length ? un.slice(0, MAX_UNRESOLVED).map((l) => `- ${l}`) : ['- 없음']));
-  if (un.length > MAX_UNRESOLVED) lines.push(`- 외 ${un.length - MAX_UNRESOLVED}건`);
-  lines.push('', '### 특이사항');
-  lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${clip(oneLine(n.text), MAX_NOTE_TEXT)}`) : ['- 없음']));
+  if (issues.length) issues.forEach((is, i) => lines.push(`${i + 1}. **${is.label}** (${is.ticket_ids.length}${en ? '' : '건'}) — ${is.detail}`));
+  else lines.push(none);
+  lines.push('', en ? '### Open' : '### 미해결');
+  const un = unresolvedLines(rows, lang, tr);
+  lines.push(...(un.length ? un.slice(0, MAX_UNRESOLVED).map((l) => `- ${l}`) : [none]));
+  if (un.length > MAX_UNRESOLVED) lines.push(en ? `- and ${un.length - MAX_UNRESOLVED} more` : `- 외 ${un.length - MAX_UNRESOLVED}건`);
+  lines.push('', en ? '### Notes' : '### 특이사항');
+  lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${clip(oneLine(n.text), MAX_NOTE_TEXT)}`) : [none]));
   return lines.join('\n');
 }
 

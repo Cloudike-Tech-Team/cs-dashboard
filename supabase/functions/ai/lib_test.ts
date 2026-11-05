@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  msg, BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
   normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
@@ -102,7 +102,7 @@ Deno.test('normalizeSummary: 타입 방어, 5개 제한, 빈 특이사항 제거
   assertEquals(s.issues[0], { label: '트래픽', detail: 'd', ticket_indexes: [1, 3] });
   assertEquals(s.issues[1], { label: '', detail: '', ticket_indexes: [] });
   assertEquals(s.notes, [{ customer: 'com1', text: 't' }]);
-  assertEquals(normalizeSummary(null), { issues: [], notes: [] });
+  assertEquals(normalizeSummary(null), { issues: [], notes: [], issuesEn: [], notesEn: [] });
 });
 
 Deno.test('mapIssueIndexes: 번호→id, 범위 밖·중복 제거, 빈 이슈·빈 라벨 제거', () => {
@@ -247,4 +247,46 @@ Deno.test('normalizeTranslation: 없는 번호는 무시, 빠진 언어는 원�
   assertEquals(m.get('t1')!.ko.title, trRow.title);
   assertEquals(m.get('t1')!.en.notes, '');
   assertEquals(normalizeTranslation(null, [trRow]).size, 0);
+});
+
+// ── 영어판 요약 · 오류 문구
+Deno.test('normalizeSummary: 영어 칸, 없으면 한국어 값', () => {
+  const s = normalizeSummary({
+    issues: [{ label: '트래픽', label_en: 'Traffic', detail: 'd', detail_en: 'de', ticket_indexes: [1] }, { label: '로그인', detail: 'x', ticket_indexes: [2] }],
+    notes: [{ customer: 'com1', text: '재활성화', text_en: 'Reactivated' }, { customer: 'com2', text: '메모' }],
+  });
+  assertEquals(s.issuesEn, [{ label: 'Traffic', detail: 'de', ticket_indexes: [1] }, { label: '로그인', detail: 'x', ticket_indexes: [2] }]);
+  assertEquals(s.notesEn, [{ customer: 'com1', text: 'Reactivated' }, { customer: 'com2', text: '메모' }]);
+  assertEquals(s.issues[0], { label: '트래픽', detail: 'd', ticket_indexes: [1] });
+});
+
+Deno.test('unresolvedLines·buildSummaryMarkdown: 영어판은 영어 머리글·라벨, 번역본 칸 우선', () => {
+  const r = row({ id: 'e1', status: 'open', status_note: '로그 대기', device: '웹', assignee: '오민식', ticket_assignee: 'Marta' });
+  const tr = new Map([['e1', { title: 'Login fails', description: '', notes: '', status_note: 'Waiting for logs', timeline: [] }]]);
+  assertEquals(unresolvedLines([r], 'en', tr), ['**com 81838 / user 119607** — Login fails · Waiting for logs · CLD-1 · Owner 오민식 (ticket Marta)']);
+  const d = row({ id: 'e2', status: 'delayed', status_note: '', timeline: [] });
+  assertEquals(unresolvedLines([d], 'en'), ['**com 81838 / user 119607** — 로그인 실패 · Delayed · CLD-1']);
+  const e = row({ id: 'e3', status: 'open', status_note: '', timeline: [], title: '', description: '' });
+  assertEquals(unresolvedLines([e], 'en'), ['**com 81838 / user 119607** — (no content) · No action yet · CLD-1']);
+  const md = buildSummaryMarkdown('2026-11', [row({ status: 'done', device: '웹' })], [], [], 'en');
+  assertEquals(md, [
+    '## CS summary · Nov 2026', '',
+    '**1 total** · Web 1', '',
+    '### Key issues', '- None', '',
+    '### Open', '- None', '',
+    '### Notes', '- None',
+  ].join('\n'));
+  const md2 = buildSummaryMarkdown('2026-11', [r], [{ label: 'Login', detail: 'com 81838 fails', ticket_ids: ['e1'] }], [], 'en', tr);
+  assertEquals(md2.split('\n')[5], '1. **Login** (1) — com 81838 fails');
+});
+
+Deno.test('msg·BadRequest: 오류 문구 두 언어', () => {
+  assertEquals(msg('en', 'noRowsMonth', { month: '2026-10' }), 'No CS to summarize in 2026-10.');
+  assertEquals(msg('ko', 'noRowsMonth', { month: '2026-10' }), '2026-10 에는 요약할 CS가 없습니다.');
+  try { validateRequest({ mode: 'parse', text: '', lang: 'en' }); throw new Error('no throw'); }
+  catch (e) {
+    assertEquals(e instanceof BadRequest, true);
+    assertEquals(msg('en', (e as BadRequest).key, (e as BadRequest).params), 'There is no text to analyze.');
+    assertEquals((e as BadRequest).message, '분석할 텍스트가 없습니다.');
+  }
 });

@@ -15,7 +15,7 @@ export const PARSE_SCHEMA = {
   additionalProperties: false,
   required: ['reporter', 'customer', 'title', 'received_at', 'device', 'version', 'description', 'notes', 'timeline', 'assignee', 'confidence_notes'],
   properties: {
-    reporter: { type: ['string', 'null'], description: '메시지 작성자 이름. 괄호 앞 한글 이름만.' },
+    reporter: { type: ['string', 'null'], description: '메시지 작성자 이름. 괄호가 있으면 괄호 앞 이름만 (한글 또는 영문).' },
     customer: { type: ['string', 'null'], description: '"com 81838 / user 119607" 형식. user 없으면 "com 9163".' },
     title: { type: 'string', description: '고객이 겪는 현상을 20자 안팎 한 줄로. 예) "웹에서 35MB 엑셀 열리지 않음".' },
     received_at: {
@@ -31,7 +31,7 @@ export const PARSE_SCHEMA = {
       items: { type: 'string' },
       description: '첫 메시지 아래의 댓글(스레드 답글)을 시간순으로 한 줄씩. "MM/DD 작성자: 내용" 형식. 댓글이 없으면 빈 배열.',
     },
-    assignee: { type: 'string', description: '본문이나 댓글에서 이 CS 를 맡기로 지정된 개발팀 담당자 이름(한글 이름만). 지정이 없으면 빈 문자열.' },
+    assignee: { type: 'string', description: '본문이나 댓글에서 이 CS 를 맡기로 지정된 개발팀 담당자 이름(괄호 앞 이름만, 한글 또는 영문). 지정이 없으면 빈 문자열.' },
     confidence_notes: { type: 'string', description: '추측한 항목과 이유. 없으면 빈 문자열.' },
   },
 } as const;
@@ -44,7 +44,7 @@ export const PARSE_SYSTEM = `당신은 Cloudike CS 담당자가 슬랙에 올린
 - **댓글은 전부 timeline 으로** 보냅니다. 댓글 내용을 description 이나 notes 에 섞지 않습니다. 댓글에서 밝혀진 원인·조치·결과도 timeline 에만 적습니다.
 
 필드 규칙:
-- reporter: 메시지 작성자 이름. "오민식(Minsik.O)" 처럼 괄호가 있으면 괄호 앞 한글 이름만. 작성자를 알 수 없으면 null.
+- reporter: 메시지 작성자 이름. "오민식(Minsik.O)" 처럼 괄호가 있으면 괄호 앞 이름만. 영문 이름("Marta Kowalska")이면 영문 그대로. 작성자를 알 수 없으면 null.
 - customer: "com <번호>" 와 "user <번호>" 를 찾아 "com 81838 / user 119607" 형식으로. user 가 없으면 "com 9163". 둘 다 없으면 본문에 나온 고객사명, 그것도 없으면 null.
 - title: 고객이 겪는 현상을 20자 안팎 한 줄로. 예) "웹에서 35MB 엑셀 열리지 않음", "트래픽 초과 — 반복 다운로드", "CLDAstream 표시 언어 영어 고정". 오류 메시지 원문보다 현상 요약을 우선. 고객사 번호는 넣지 않습니다.
 - received_at: 본문에 날짜와 시각이 모두 있으면 "YYYY-MM-DDTHH:MM" (24시간제, KST). 시각만 있으면 "HH:MM" 만 (예: "02:47 PM" → "14:47"). 둘 다 없으면 null. 날짜 구분선("2026년 10월 12일")이 메시지 위에 있으면 그 날짜를 사용.
@@ -62,7 +62,8 @@ export const PARSE_SYSTEM = `당신은 Cloudike CS 담당자가 슬랙에 올린
 - notes: 첨부파일명, 이미 시도한 조치(예: "비밀번호 재변경 후에도 동일"), 요청사항(예: "월결제→연결제 변경 요청"), 담당자 멘션 등 현상 외 정보. 없으면 "".
 - timeline: 댓글 하나당 한 줄, 위에서 아래 순서(시간순) 그대로. 형식은 "MM/DD 작성자: 내용 요약". 작성자는 괄호 앞 한글 이름. 내용은 한 문장으로 줄이되 요청·확인·조치·결과(예: "PC 로그 요청", "계정 비활성화가 원인으로 확인, 재활성화 완료")와 티켓 번호는 유지. 댓글에 날짜가 없고 시각만 있으면 본문 날짜(또는 가장 최근 날짜 구분선)를 쓰고, 날짜 구분선("10월 13일")이 중간에 나오면 그 뒤 댓글은 그 날짜를 씁니다. 날짜를 전혀 알 수 없으면 "MM/DD " 없이 "작성자: 내용"만. 댓글이 없으면 [].
 - assignee: 본문이나 댓글에 "담당 @오민식", "민식님 확인 부탁드립니다", "제가 보겠습니다"(댓글 작성자) 처럼 이 CS 를 맡는 개발팀 사람이 드러나면 그 한글 이름만. 단순 멘션이나 참조(cc)는 담당이 아닙니다. 확신이 없으면 "" 로 두고 confidence_notes 에 후보를 적습니다.
-- confidence_notes: 추측한 항목과 그 이유. 사용자가 검토할 때 참고용. 없으면 "".
+- confidence_notes: 추측한 항목과 그 이유. 사용자가 검토할 때 참고용. 없으면 "". 사용자 메시지 첫 줄에 지정된 언어(한국어/영어)로 씁니다.
+- 언어: title·description·notes·timeline 은 메시지에 쓰인 언어 그대로 씁니다 (영어 메시지면 영어로). 번역하지 않습니다.
 
 슬랙 UI 잔여물("6개의 댓글", "삭제된 메시지입니다", 파일 크기 표시 등)은 무시합니다.
 본문에 없는 내용을 지어내지 않습니다.`;
@@ -81,10 +82,12 @@ export const SUMMARY_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['label', 'detail', 'ticket_indexes'],
+        required: ['label', 'label_en', 'detail', 'detail_en', 'ticket_indexes'],
         properties: {
           label: { type: 'string', description: '이슈 이름 12자 안팎. 화면 버튼에 들어감. 예) "트래픽 초과", "CLDAstream 로그인·표시"' },
+          label_en: { type: 'string', description: 'label 의 영어. 3단어 안팎. 예) "Traffic exceeded"' },
           detail: { type: 'string', description: '어떤 고객사가 어떤 증상인지 한 문장, 60자 안팎. 고객사 번호(com6384)와 티켓 번호를 포함.' },
+          detail_en: { type: 'string', description: 'detail 의 영어. 고객사 번호·티켓 번호는 그대로.' },
           ticket_indexes: { type: 'array', items: { type: 'integer' }, description: '이 이슈에 속하는 CS 목록 번호(1부터).' },
         },
       },
@@ -95,10 +98,11 @@ export const SUMMARY_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['customer', 'text'],
+        required: ['customer', 'text', 'text_en'],
         properties: {
           customer: { type: 'string', description: '고객사 번호. 예) "com82171"' },
           text: { type: 'string', description: '수치·경위·후속 조치를 한 문장으로. 예) "9월 초과 — 공유 링크 51개, 외부 약 140개 IP 가 원본 다운로드"' },
+          text_en: { type: 'string', description: 'text 의 영어. 수치·고객사 번호는 그대로.' },
         },
       },
     },
@@ -119,7 +123,8 @@ export const SUMMARY_SYSTEM = `당신은 Cloudike 기술팀의 월간 CS 보고�
 
 공통:
 - 목록에 없는 내용을 추가하지 않습니다. 추측 표현("~로 보임")은 목록에 근거가 있을 때만 씁니다.
-- 한국어, 간결체.`;
+- 한국어, 간결체. 목록의 원문이 영어인 CS 도 한국어로 씁니다.
+- label_en·detail_en·text_en 은 같은 내용을 영어로 (해외팀 참고용). 평이한 짧은 문장, 고객사 번호·티켓 번호·제품명은 그대로.`;
 
 // ───────────── translate: CS 기록 → 한국어·영어 ─────────────
 // 입력은 한 줄에 CS 하나(JSON). 모델은 칸마다 ko·en 둘 다 돌려준다. 정규화(lib.ts normalizeTranslation)가 빠진 번호·토큰을 원문으로 되돌린다.

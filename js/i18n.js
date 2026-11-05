@@ -403,7 +403,7 @@
       "paste.done": "Filled in. Check the fields, then save.",
       "paste.failed": "Analysis failed: {e}",
       "paste.review": "Please check · {list}",
-      "paste.hTimeline": "History: moved {n} replies, check order and dates",
+      "paste.hTimeline": "History: replies moved over ({n}), check order and dates",
       "paste.hAsgKnown": "CS owner: read as {name}, please check",
       "paste.hAsgUnknown": "CS owner: read as {name} but not on the list, left empty (add it in Manage owners)",
       "paste.hNoDate": "Date: not in the message, kept the current time",

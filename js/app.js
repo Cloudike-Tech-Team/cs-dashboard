@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-5';
+  const APP_VERSION = '20261105-7';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -875,15 +875,47 @@
       return b;
     };
     const remove = btn('−', t('f.removeItem'), () => row.remove());
-    // 처리 타임라인은 순서를 바꾸거나 중간에 넣을 수 있다
-    const order = name === 'timeline' ? [
-      btn('↑', t('f.moveUp'), () => { if (row.previousElementSibling) row.previousElementSibling.before(row); input.focus(); }),
-      btn('↓', t('f.moveDown'), () => { if (row.nextElementSibling) row.nextElementSibling.after(row); input.focus(); }),
-      btn('+', t('f.insertBelow'), () => addListItem(name, '', row).focus()),
-    ] : [];
-    const row = el('div', { class: 'list-row' }, input, ...order, remove);
+    // 처리 타임라인은 손잡이를 끌어 순서를 바꾸고(↑↓ 키도 됨), + 로 바로 아래에 넣을 수 있다
+    const tl = name === 'timeline';
+    const handle = tl ? dragHandle(() => row) : null;
+    const row = el('div', { class: 'list-row' }, handle, input, tl ? btn('+', t('f.insertBelow'), () => addListItem(name, '', row).focus()) : null, remove);
     if (after) after.after(row); else list.append(row);
     return input;
+  }
+
+  // 줄 순서 손잡이: 마우스·터치로 끌면 포인터 위치에 맞춰 줄을 옮기고, 포커스된 상태에서 ↑↓ 키로 한 칸씩
+  function dragHandle(getRow) {
+    const h = el('button', { type: 'button', class: 'drag-handle', 'aria-label': t('f.dragHandle'), title: t('f.dragHandle'), text: '⠿' });
+    h.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const row = getRow();
+      const list = row.parentElement;
+      // 줄을 DOM 에서 옮기면 포인터 캡처가 풀리므로 document 에서 받는다
+      row.classList.add('dragging');
+      const move = (ev) => {
+        // 포인터보다 아래에 중심이 있는 첫 줄 앞으로 (없으면 맨 끝)
+        const others = [...list.children].filter((x) => x !== row);
+        const next = others.find((x) => { const r = x.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+        if (next) { if (next !== row.nextElementSibling) list.insertBefore(row, next); }
+        else if (list.lastElementChild !== row) list.append(row);
+      };
+      const end = () => {
+        row.classList.remove('dragging');
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', end);
+        document.removeEventListener('pointercancel', end);
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    });
+    h.addEventListener('keydown', (e) => {
+      const row = getRow();
+      if (e.key === 'ArrowUp' && row.previousElementSibling) { e.preventDefault(); row.previousElementSibling.before(row); h.focus(); }
+      if (e.key === 'ArrowDown' && row.nextElementSibling) { e.preventDefault(); row.nextElementSibling.after(row); h.focus(); }
+    });
+    return h;
   }
   form.querySelectorAll('[data-add]').forEach((b) =>
     b.addEventListener('click', () => addListItem(b.dataset.add).focus()));

@@ -251,3 +251,42 @@ $$;
 
 revoke all on function public.rename_cs_assignee(text, text) from public, anon;
 grant execute on function public.rename_cs_assignee(text, text) to authenticated;
+
+-- ─────────────────────────────────────────────
+-- 7. CS 번역 (영문 버전). Edge Function `ai` 의 translate 모드가 Claude 로 ko·en 을 만들어 upsert.
+--    원문 cs_tickets 는 건드리지 않는다. 여기에 트리거를 달지 않는다
+--    (cs_tickets.updated_at 이 바뀌면 열려 있는 수정 창이 충돌 오류를 받으므로 번역은 별도 테이블).
+-- ─────────────────────────────────────────────
+create table if not exists public.cs_ticket_translations (
+  ticket_id     uuid not null references public.cs_tickets(id) on delete cascade,
+  lang          text not null check (lang in ('ko', 'en')),
+  fields        jsonb not null,        -- { title, description, notes, status_note, timeline: [] }
+  source_hash   text not null,         -- 번역할 때 원문 칸들의 SHA-256 (js/lib.js sourceHash). 다르면 오래된 번역
+  translated_at timestamptz not null default now(),
+  primary key (ticket_id, lang)
+);
+
+alter table public.cs_ticket_translations enable row level security;
+
+revoke all on table public.cs_ticket_translations from anon;
+grant select, insert, update, delete on table public.cs_ticket_translations to authenticated;
+
+drop policy if exists "tr_select" on public.cs_ticket_translations;
+drop policy if exists "tr_insert" on public.cs_ticket_translations;
+drop policy if exists "tr_update" on public.cs_ticket_translations;
+drop policy if exists "tr_delete" on public.cs_ticket_translations;
+
+create policy "tr_select" on public.cs_ticket_translations
+  for select to authenticated using (true);
+create policy "tr_insert" on public.cs_ticket_translations
+  for insert to authenticated with check (true);
+create policy "tr_update" on public.cs_ticket_translations
+  for update to authenticated using (true) with check (true);
+create policy "tr_delete" on public.cs_ticket_translations
+  for delete to authenticated using (true);
+
+-- 월간 요약 영어판 (null = 영어판 없음, 재생성하면 채워짐)
+alter table public.cs_monthly_summaries
+  add column if not exists content_en text check (content_en is null or char_length(content_en) <= 20000),
+  add column if not exists issues_en  jsonb,
+  add column if not exists notes_en   jsonb;

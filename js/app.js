@@ -60,7 +60,7 @@
     ytBusy: 0,                 // 진행 중인 티켓 조회 요청 수
     ytError: '',
     tr: {},                    // 번역 { [id]: { ko?: { fields, source_hash }, en?: … } } (cs_ticket_translations)
-    hash: {},                  // 원문 해시 { [id]: sha256 } — 번역이 최신인지 비교용
+    hash: {},                  // 원문 해시 캐시 { [id]: { text, hash } } — 원문(text)이 바뀌면 쓰지 않는다 (L.cachedHash)
     trError: '',
     showOriginal: false,       // 상세에서 「원문 보기」를 누른 상태
     backfill: { remaining: 0, running: false, msg: '' },
@@ -463,7 +463,7 @@
     return el('span', { class: cls + (names.length ? '' : ' none'), text, title: manual ? t('list.manual', { text }) : text });
   }
   function ticketStateNode(r) {
-    const s = L.ticketState(r, state.yt);
+    const s = L.ticketState(r, state.yt, state.lang);
     if (!s) return el('span', { class: 'col-tstate none', text: r.tickets.length ? (state.ytBusy ? '…' : t('list.unknownState')) : '—' });
     const n = el('span', { class: 'col-tstate', title: s.title }, el('span', { class: 'dot' }), el('span', { text: s.label }));
     n.style.setProperty('--c', s.color);
@@ -569,7 +569,7 @@
       el('span', { text: ta.names.length ? ta.names.join(', ') : (r.tickets.length ? t('common.unassigned') : '—') }),
       ...(ta.manual ? [el('span', { class: 'muted small', text: ' ' + t('list.manual', { text: '' }).trim() })] : []));
     $('detail-ticket-assignee').className = ta.names.length ? '' : 'muted';
-    const ts = L.ticketState(r, state.yt);
+    const ts = L.ticketState(r, state.yt, state.lang);
     if (ts) {
       const n = el('span', { class: 'status-inline', text: ts.label, title: ts.title });
       n.style.setProperty('--c', ts.color);
@@ -1343,7 +1343,14 @@
   });
   // ───────────── 번역 표시 (cs_ticket_translations) ─────────────
   // 원문은 cs_tickets 그대로. 번역본은 Edge Function `ai` 의 translate 모드가 만들어 저장한다.
-  function disp(r) { return L.displayFields(r, state.hash[r.id], state.tr[r.id], state.lang); }
+  function disp(r) { return L.displayFields(r, L.cachedHash(state.hash[r.id], r), state.tr[r.id], state.lang); }
+  async function hashOf(r) {
+    const h = L.cachedHash(state.hash[r.id], r);
+    if (h) return h;
+    const hash = await L.sourceHash(r);
+    state.hash[r.id] = { text: L.sourceText(r), hash };
+    return hash;
+  }
   function trTexts(r) { const f = disp(r); return f.translated ? [f.title, f.description, f.notes, f.status_note, ...f.timeline] : []; }
   function renderTrStatus() { showError($('tr-error'), state.trError); }
   const trPending = new Set();   // 번역 요청 중인 id (같은 CS 를 두 번 보내지 않게)
@@ -1351,7 +1358,7 @@
   // rows 의 번역을 읽어 겹쳐 그린다. request 면 화면 언어 번역이 없거나 오래된 것을 번역 요청
   async function loadTranslations(rows, { request = true } = {}) {
     if (!rows.length) return;
-    await Promise.all(rows.map(async (r) => { state.hash[r.id] = await L.sourceHash(r); }));
+    await Promise.all(rows.map(hashOf));
     const ids = [...new Set(rows.map((r) => r.id))];
     try {
       for (let i = 0; i < ids.length; i += 200) {
@@ -1375,8 +1382,8 @@
   async function requestTranslations(rows) {
     const need = [];
     for (const r of rows) {
-      if (!state.hash[r.id]) state.hash[r.id] = await L.sourceHash(r);
-      if (!trPending.has(r.id) && L.needsTranslation(r, state.hash[r.id], state.tr[r.id], state.lang)) need.push(r.id);
+      const hash = await hashOf(r);   // 원문이 바뀌었으면 새로 계산
+      if (!trPending.has(r.id) && L.needsTranslation(r, hash, state.tr[r.id], state.lang)) need.push(r.id);
     }
     const ids = [...new Set(need)];
     if (!ids.length) return;

@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  msg, BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
   normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
@@ -289,4 +289,39 @@ Deno.test('msg·BadRequest: 오류 문구 두 언어', () => {
     assertEquals(msg('en', (e as BadRequest).key, (e as BadRequest).params), 'There is no text to analyze.');
     assertEquals((e as BadRequest).message, '분석할 텍스트가 없습니다.');
   }
+});
+
+// ── 최종 리뷰 수정: 긴 CS 한 건이 번역 전체를 막지 않게
+const src = (id: string, n = 10) => ({ id, title: 'x'.repeat(n), description: '', notes: '', status_note: '', timeline: [] as string[] });
+
+Deno.test('chunkRows: 건수·글자 수 한도로 나누고, 한 건이 한도를 넘어도 혼자 한 묶음', () => {
+  assertEquals(chunkRows([src('a'), src('b'), src('c')], 2, 1000).map((c) => c.map((r) => r.id)), [['a', 'b'], ['c']]);
+  assertEquals(chunkRows([src('a', 900), src('b', 900)], 10, 1000).map((c) => c.map((r) => r.id)), [['a'], ['b']]);
+  assertEquals(chunkRows([src('a', 5000)], 10, 1000).map((c) => c.length), [1]);
+  assertEquals(MAX_CHARS_PER_CALL <= 6000, true);
+});
+
+Deno.test('translateInChunks: 출력이 잘리면 반으로 나눠 다시, 한 건만으로 잘리면 그 건만 건너뜀', async () => {
+  const rows = [src('a'), src('b'), src('long'), src('c')];
+  const calls: string[][] = [];
+  const call = async (chunk: typeof rows) => {
+    calls.push(chunk.map((r) => r.id));
+    if (chunk.some((r) => r.id === 'long')) throw new Truncated();
+    return { items: chunk.map((r, i) => ({ index: i + 1, ko: { title: r.title }, en: { title: r.title + '!' } })) };
+  };
+  const { got, tooLong } = await translateInChunks(rows, call, 10, 1000);
+  assertEquals([...got.keys()].sort(), ['a', 'b', 'c']);
+  assertEquals(tooLong.map((r) => r.id), ['long']);
+  assertEquals(got.get('c')!.en.title, 'xxxxxxxxxx!');
+  assertEquals(calls[0], ['a', 'b', 'long', 'c']);
+});
+
+Deno.test('translateInChunks: 잘림이 아닌 오류는 그대로 던짐', async () => {
+  let threw = false;
+  try { await translateInChunks([src('a')], async () => { throw new Error('boom'); }, 10, 1000); } catch { threw = true; }
+  assertEquals(threw, true);
+});
+
+Deno.test('SUMMARY_MAX_TOKENS: 영어판이 더해진 요약 출력이 잘리지 않게 8192 이상', () => {
+  assertEquals(SUMMARY_MAX_TOKENS >= 8192, true);
 });

@@ -8,15 +8,14 @@ import Anthropic from 'npm:@anthropic-ai/sdk@0.133.0';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { MODEL, PARSE_SCHEMA, PARSE_SYSTEM, SUMMARY_SCHEMA, SUMMARY_SYSTEM, TRANSLATE_SCHEMA, TRANSLATE_SYSTEM } from './prompts.ts';
 import {
-  BadRequest, msg, buildSummaryMarkdown, mapIssueIndexes, MAX_TRANSLATE_IDS, MAX_TRANSLATE_ROWS_PER_CALL, monthRange, normalizeParsed,
-  normalizeSummary, normalizeTranslation, sourceHash, summaryUserMessage, translateInput, validateRequest, type Lang, type Ticket, type TrFields, type TrSource,
+  BadRequest, msg, buildSummaryMarkdown, mapIssueIndexes, MAX_TRANSLATE_ROWS_PER_CALL, monthRange, normalizeParsed,
+  normalizeSummary, sourceHash, SUMMARY_MAX_TOKENS, summaryUserMessage, translateInChunks, translateInput, Truncated, validateRequest, type Lang, type Ticket, type TrFields, type TrSource,
 } from './lib.ts';
 
 // deno-lint-ignore no-explicit-any
 type Sb = SupabaseClient<any, 'public', 'public', any, any>;
 const TR_COLS = 'id,title,description,notes,status_note,timeline';
 const PAGE = 1000;
-const MAX_CHARS_PER_CALL = 12000;   // 한 번의 Claude 호출에 넣을 원문 분량
 
 function isBlank(r: TrSource): boolean {
   return !r.title && !r.description && !r.notes && !r.status_note && !(r.timeline || []).length;
@@ -43,18 +42,10 @@ async function translationHashes(sb: Sb, ids: string[] | null): Promise<Map<stri
 }
 
 // rows 를 묶어 Claude 로 번역하고 cs_ticket_translations 에 upsert. cs_tickets 에는 쓰지 않는다.
+// 출력이 잘리면 묶음을 나눠 다시 하고, 한 건만으로도 잘리는 긴 CS 는 원문을 두 언어에 그대로 저장한다
+// (그래야 그 건이 기존 기록 번역의 맨 앞에 남아 매번 같은 실패를 반복하지 않는다).
 async function translateRows(claude: Anthropic, sb: Sb, rows: TrSource[]): Promise<Record<string, unknown>> {
-  const out: Record<string, unknown> = {};
-  const chunks: TrSource[][] = [];
-  let cur: TrSource[] = [], chars = 0;
-  for (const r of rows) {
-    const n = translateInput([r]).length;
-    if (cur.length && (cur.length >= MAX_TRANSLATE_ROWS_PER_CALL || chars + n > MAX_CHARS_PER_CALL)) { chunks.push(cur); cur = []; chars = 0; }
-    cur.push(r); chars += n;
-  }
-  if (cur.length) chunks.push(cur);
-
-  for (const chunk of chunks) {
+  const call = async (chunk: TrSource[]) => {
     const res = await claude.messages.create({
       model: MODEL,
       max_tokens: 16000,
@@ -62,25 +53,31 @@ async function translateRows(claude: Anthropic, sb: Sb, rows: TrSource[]): Promi
       output_config: { effort: 'low', format: { type: 'json_schema', schema: TRANSLATE_SCHEMA } },
       messages: [{ role: 'user', content: `다음 CS 기록을 옮기세요.\n\n${translateInput(chunk)}` }],
     });
+    if (res.stop_reason === 'max_tokens') throw new Truncated();
     checkStop(res, 'translate');
-    let raw: unknown;
-    try { raw = JSON.parse(textOf(res)); }
+    try { return JSON.parse(textOf(res)); }
     catch { throw new HttpError(502, 'badModelJson'); }
-    const got = normalizeTranslation(raw, chunk);
-    const upserts = [];
-    for (const r of chunk) {
-      const tr = got.get(r.id);
-      if (!tr) continue;
-      const source_hash = await sourceHash(r);
-      const translated_at = new Date().toISOString();
-      upserts.push({ ticket_id: r.id, lang: 'ko', fields: tr.ko, source_hash, translated_at });
-      upserts.push({ ticket_id: r.id, lang: 'en', fields: tr.en, source_hash, translated_at });
-      out[r.id] = { ko: { fields: tr.ko, source_hash }, en: { fields: tr.en, source_hash } };
-    }
-    if (upserts.length) {
-      const { error } = await sb.from('cs_ticket_translations').upsert(upserts, { onConflict: 'ticket_id,lang' });
-      if (error) throw new HttpError(500, 'trSaveFailed', { error: error.message });
-    }
+  };
+  const { got, tooLong } = await translateInChunks(rows, call);
+  for (const r of tooLong) {
+    console.warn('translate: too long, stored as original', r.id);
+    const orig = { title: r.title || '', description: r.description || '', notes: r.notes || '', status_note: r.status_note || '', timeline: r.timeline || [] };
+    got.set(r.id, { ko: orig, en: orig });
+  }
+  const out: Record<string, unknown> = {};
+  const upserts = [];
+  const translated_at = new Date().toISOString();
+  for (const r of rows) {
+    const tr = got.get(r.id);
+    if (!tr) continue;
+    const source_hash = await sourceHash(r);
+    upserts.push({ ticket_id: r.id, lang: 'ko', fields: tr.ko, source_hash, translated_at });
+    upserts.push({ ticket_id: r.id, lang: 'en', fields: tr.en, source_hash, translated_at });
+    out[r.id] = { ko: { fields: tr.ko, source_hash }, en: { fields: tr.en, source_hash } };
+  }
+  if (upserts.length) {
+    const { error } = await sb.from('cs_ticket_translations').upsert(upserts, { onConflict: 'ticket_id,lang' });
+    if (error) throw new HttpError(500, 'trSaveFailed', { error: error.message });
   }
   return out;
 }
@@ -210,11 +207,12 @@ Deno.serve(async (req) => {
       return json({ translations, skipped: rows.filter((r) => !staleIds.has(r.id)).map((r) => r.id) });
     }
 
-    // ── translate_backfill: 전체 CS 중 번역이 없거나 오래된 것을 오래된 순으로 한 번에 MAX_TRANSLATE_IDS 건
+    // ── translate_backfill: 전체 CS 중 번역이 없거나 오래된 것을 오래된 순으로 한 번에 한 묶음(최대 10건)
+    //    (Edge Function 실행 시간 한도 안에 들게 Claude 호출을 한 번 안팎으로)
     if (body.mode === 'translate_backfill') {
       const stale = await staleRows(sb, await allTicketSources(sb), null);
       if (body.dry || !stale.length) return json({ translated: 0, remaining: stale.length });
-      const done = await translateRows(claude, sb, stale.slice(0, MAX_TRANSLATE_IDS));
+      const done = await translateRows(claude, sb, stale.slice(0, MAX_TRANSLATE_ROWS_PER_CALL));
       const n = Object.keys(done).length;
       return json({ translated: n, remaining: stale.length - n });
     }
@@ -233,7 +231,7 @@ Deno.serve(async (req) => {
 
     const res = await claude.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: SUMMARY_MAX_TOKENS,
       system: SUMMARY_SYSTEM,
       output_config: { effort: 'medium', format: { type: 'json_schema', schema: SUMMARY_SCHEMA } },
       messages: [{ role: 'user', content: summaryUserMessage(body.month, tickets) }],

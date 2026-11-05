@@ -272,3 +272,31 @@ test('matchesSearch: 번역문과 영어 라벨도 검색', () => {
   assert.equal(L.matchesSearch(row({ status: 'deploy' }), 'to deploy'), true);
   assert.equal(L.matchesSearch(row(), 'zzz', null, ['Login fails']), false);
 });
+
+// ── 최종 리뷰 수정
+test('cachedHash: 원문이 바뀌면 캐시된 해시를 쓰지 않음', async () => {
+  const r = row({ title: '로그 대기' });
+  const entry = { text: L.sourceText(r), hash: await L.sourceHash(r) };
+  assert.equal(L.cachedHash(entry, r), entry.hash);
+  assert.equal(L.cachedHash(entry, { ...r, status_note: '재현 확인' }), null);
+  assert.equal(L.cachedHash(undefined, r), null);
+});
+
+test('displayFields·needsTranslation: 원문 언어 화면에서는 항상 원문 (모델이 다시 쓴 문장을 보이지 않음)', () => {
+  const kor = row({ title: 'PC client sync 안 됨', description: '', notes: '' });
+  const rewritten = { ko: { source_hash: 'h', fields: { title: 'PC client 동기화 안 됨', description: '', notes: '', status_note: '', timeline: [] } } };
+  const d = L.displayFields(kor, 'h', rewritten, 'ko');
+  assert.equal(d.title, 'PC client sync 안 됨');
+  assert.equal(d.translated, false);
+  const eng = row({ title: 'Login fails', description: '', notes: '' });
+  const enRewritten = { en: { source_hash: 'h', fields: { title: 'Login failure', description: '', notes: '', status_note: '', timeline: [] } } };
+  assert.equal(L.displayFields(eng, 'h', enRewritten, 'en').title, 'Login fails');
+  assert.equal(L.needsTranslation(eng, 'h', {}, 'en'), false);
+});
+
+test('ticketState: 여러 티켓 라벨이 화면 언어', () => {
+  const r = row({ tickets: ['NRF-1', 'NRF-2'] });
+  const yt = { 'NRF-1': { state: 'Open', resolved: false, assignees: [] }, 'NRF-2': { state: 'Done', resolved: true, assignees: [] } };
+  assert.equal(L.ticketState(r, yt).label, 'Open 외 1');
+  assert.equal(L.ticketState(r, yt, 'en').label, 'Open +1');
+});

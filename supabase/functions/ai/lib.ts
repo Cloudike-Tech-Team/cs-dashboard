@@ -385,3 +385,47 @@ export function normalizeTranslation(raw: unknown, rows: TrSource[]): Map<string
   }
   return out;
 }
+
+// 한 번의 Claude 호출에 넣을 원문 분량. 출력은 ko·en 두 벌이라 입력의 두 배 넘게 나온다 (max_tokens 16000 안에 들게)
+export const MAX_CHARS_PER_CALL = 5000;
+// 월간 요약은 한국어·영어 이슈·특이사항을 함께 내므로 넉넉히
+export const SUMMARY_MAX_TOKENS = 8192;
+
+// 모델 출력이 max_tokens 에서 잘렸음
+export class Truncated extends Error {}
+
+// 건수·원문 글자 수 한도로 묶는다. 한 건이 한도를 넘으면 혼자 한 묶음
+export function chunkRows(rows: TrSource[], maxRows = MAX_TRANSLATE_ROWS_PER_CALL, maxChars = MAX_CHARS_PER_CALL): TrSource[][] {
+  const chunks: TrSource[][] = [];
+  let cur: TrSource[] = [], chars = 0;
+  for (const r of rows) {
+    const n = translateInput([r]).length;
+    if (cur.length && (cur.length >= maxRows || chars + n > maxChars)) { chunks.push(cur); cur = []; chars = 0; }
+    cur.push(r); chars += n;
+  }
+  if (cur.length) chunks.push(cur);
+  return chunks;
+}
+
+// 묶음마다 call 을 부르고 정규화한다. 출력이 잘리면(Truncated) 반으로 나눠 다시, 한 건만으로 잘리면 그 건은 tooLong 으로.
+// 그 밖의 오류는 그대로 던진다.
+export async function translateInChunks(
+  rows: TrSource[], call: (chunk: TrSource[]) => Promise<unknown>,
+  maxRows = MAX_TRANSLATE_ROWS_PER_CALL, maxChars = MAX_CHARS_PER_CALL,
+): Promise<{ got: Map<string, { ko: TrFields; en: TrFields }>; tooLong: TrSource[] }> {
+  const got = new Map<string, { ko: TrFields; en: TrFields }>();
+  const tooLong: TrSource[] = [];
+  const run = async (chunk: TrSource[]): Promise<void> => {
+    try {
+      normalizeTranslation(await call(chunk), chunk).forEach((v, k) => got.set(k, v));
+    } catch (e) {
+      if (!(e instanceof Truncated)) throw e;
+      if (chunk.length === 1) { tooLong.push(chunk[0]); return; }
+      const mid = Math.ceil(chunk.length / 2);
+      await run(chunk.slice(0, mid));
+      await run(chunk.slice(mid));
+    }
+  };
+  for (const c of chunkRows(rows, maxRows, maxChars)) await run(c);
+  return { got, tooLong };
+}

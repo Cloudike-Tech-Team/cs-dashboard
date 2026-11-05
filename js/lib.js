@@ -154,12 +154,12 @@
   }
 
   // 목록용 티켓 상태 한 칸: 아직 안 끝난 첫 티켓의 상태. 모두 끝났으면 첫 티켓. 여러 개면 "외 n".
-  function ticketState(row, yt) {
+  function ticketState(row, yt, lang = 'ko') {
     const found = ticketInfos(row, yt).filter((x) => x.yt && x.yt.state);
     if (!found.length) return null;
     const rep = found.find((x) => !x.yt.resolved) || found[0];
     return {
-      label: found.length > 1 ? `${rep.yt.state} 외 ${found.length - 1}` : rep.yt.state,
+      label: found.length > 1 ? `${rep.yt.state} ${lang === 'en' ? '+' : '외 '}${found.length - 1}` : rep.yt.state,
       color: ytStateColor(rep.yt),
       title: found.map((x) => `${x.id} ${x.yt.state}`).join(' · '),
       allResolved: found.every((x) => x.yt.resolved),
@@ -195,6 +195,8 @@
   function sourceText(row) {
     return JSON.stringify([row.title || '', row.description || '', row.notes || '', row.status_note || '', row.timeline || []]);
   }
+  // 캐시 { text, hash } 가 지금 원문과 같을 때만 해시를 돌려준다 (원문을 고친 뒤 오래된 번역이 최신처럼 보이지 않게)
+  function cachedHash(entry, row) { return entry && entry.text === sourceText(row) ? entry.hash : null; }
   async function sourceHash(row) {
     const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(sourceText(row)));
     return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -202,9 +204,11 @@
   const HANGUL = /[\uAC00-\uD7A3\u3131-\u318E]/;
   function hasHangul(row) { return HANGUL.test(sourceText(row)); }
   function isBlank(row) { return !row.title && !row.description && !row.notes && !row.status_note && !(row.timeline || []).length; }
+  // 원문이 이미 화면 언어인 기록 (한글이 있으면 한국어로, 없으면 영어로 쓴 것으로 본다)
+  function isSourceLang(row, lang) { return lang === 'ko' ? hasHangul(row) : !hasHangul(row); }
   function needsTranslation(row, hash, trByLang, lang) {
     if (isBlank(row)) return false;
-    if (lang === 'ko' && hasHangul(row)) return false;   // 한국어로 쓴 기록은 한국어 화면에서 번역 불필요
+    if (isSourceLang(row, lang)) return false;   // 원문 언어 화면에서는 번역 불필요
     const tr = trByLang && trByLang[lang];
     return !tr || tr.source_hash !== hash;
   }
@@ -212,13 +216,14 @@
   function displayFields(row, hash, trByLang, lang) {
     const orig = { title: row.title || '', description: row.description || '', notes: row.notes || '', status_note: row.status_note || '', timeline: row.timeline || [] };
     const tr = trByLang && trByLang[lang];
-    if (!tr || tr.source_hash !== hash || !tr.fields) return { ...orig, translated: false };
+    // 원문 언어 화면에서는 모델이 다시 쓴 문장 대신 항상 원문
+    if (!tr || tr.source_hash !== hash || !tr.fields || isSourceLang(row, lang)) return { ...orig, translated: false };
     const f = { ...orig, ...tr.fields, timeline: Array.isArray(tr.fields.timeline) ? tr.fields.timeline : orig.timeline };
     return { ...f, translated: JSON.stringify(TR_FIELDS.map((k) => f[k])) !== JSON.stringify(TR_FIELDS.map((k) => orig[k])) };
   }
 
   return {
-    TR_FIELDS, sourceText, sourceHash, hasHangul, needsTranslation, displayFields,
+    TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
     STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,

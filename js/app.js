@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-9';
+  const APP_VERSION = '20261105-10';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -226,6 +226,8 @@
     }
     state.ytBusy--;
     renderYtStatus();
+    renderKpi();
+    renderSidebar();
     renderList();
     renderDetail();
   }
@@ -342,7 +344,7 @@
   function filteredRows(rows = state.rows) {
     const q = $('search-input').value;
     const issues = summaryView().issues;
-    return L.applyFilter(rows, state.filter, issues).filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r)));
+    return L.applyFilter(rows, state.filter, issues, state.yt).filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r)));
   }
 
   function deviceLine(r) { const d = L.deviceLabel(r.device, state.lang); return r.version ? `${d} · v${r.version}` : d; }
@@ -422,13 +424,15 @@
 
   // 목록에서 바로 고치는 심각도 select. 보통은 흐리게, 나머지는 색 배지처럼 보인다.
   // 행 클릭(상세 열기)으로 번지지 않게 막는다.
+  // YouTrack Priority 가 있는 CS 는 그 값을 보여 주고 잠근다 (바꾸려면 YouTrack 에서)
   function severitySelect(r) {
-    const key = L.severityKey(r);
-    const sel = el('select', { class: 'sev-select' + (key === 'normal' ? ' normal' : ''), 'aria-label': t('list.sevAria', { title: disp(r).title || 'CS' }), title: t('list.sevTitle') },
+    const ys = L.ytSeverity(r, state.yt);
+    const key = ys ? ys.key : L.severityKey(r);
+    const sel = el('select', { class: 'sev-select' + (key === 'normal' ? ' normal' : '') + (ys ? ' from-yt' : ''), 'aria-label': t('list.sevAria', { title: disp(r).title || 'CS' }), title: ys ? t('sev.fromYt', { ids: ys.ids.join(', ') }) : t('list.sevTitle') },
       Object.keys(L.SEVERITY).map((k) => el('option', { value: k, text: L.severityLabel(k, state.lang) })));
     sel.value = key;
     sel.style.setProperty('--s', L.SEVERITY[key].color);
-    sel.disabled = state.busy;
+    sel.disabled = state.busy || !!ys;
     ['click', 'keydown'].forEach((t) => sel.addEventListener(t, (e) => e.stopPropagation()));
     sel.addEventListener('change', () => saveSeverity(r, sel));
     return sel;
@@ -548,12 +552,14 @@
     }
     $('detail-status').textContent = L.statusLabel(r, state.lang, f);
     $('detail-status').style.setProperty('--c', L.statusColor(r));
-    const sev = L.severityDef(r);
-    $('detail-severity-pill').hidden = L.severityKey(r) === 'normal';
-    $('detail-severity-pill').textContent = L.severityLabel(L.severityKey(r), state.lang);
-    $('detail-severity-pill').style.setProperty('--s', sev.color);
-    $('detail-severity').textContent = L.severityLabel(L.severityKey(r), state.lang);
-    $('detail-severity').className = L.severityKey(r) === 'normal' ? 'muted' : 'bold';
+    const ys = L.ytSeverity(r, state.yt);
+    const sk = ys ? ys.key : L.severityKey(r);
+    $('detail-severity-pill').hidden = sk === 'normal';
+    $('detail-severity-pill').textContent = L.severityLabel(sk, state.lang);
+    $('detail-severity-pill').style.setProperty('--s', L.SEVERITY[sk].color);
+    $('detail-severity').replaceChildren(el('span', { text: L.severityLabel(sk, state.lang) }),
+      ...(ys ? [el('span', { class: 'muted small yt-src', text: ` · YouTrack ${ys.ids.join(', ')}`, title: t('sev.fromYt', { ids: ys.ids.join(', ') }) })] : []));
+    $('detail-severity').className = sk === 'normal' ? 'muted' : 'bold';
     $('detail-title').textContent = f.title || t('list.noTitle');
     $('detail-customer').textContent = r.customer;
     $('detail-device').textContent = deviceLine(r);
@@ -599,12 +605,15 @@
       sel.value = r.status;
       const sev = el('select', { 'aria-label': t('q.severity') },
         Object.keys(L.SEVERITY).map((k) => el('option', { value: k, text: t('q.sevOption', { label: L.severityLabel(k, state.lang) }) })));
-      sev.value = L.severityKey(r);
+      const ysq = L.ytSeverity(r, state.yt);
+      sev.value = ysq ? ysq.key : L.severityKey(r);
+      if (ysq) { sev.disabled = true; sev.title = t('sev.fromYt', { ids: ysq.ids.join(', ') }); }
       const note = el('input', { type: 'text', maxlength: '50', placeholder: t('q.notePh') });
       note.value = r.status_note;
       // 상태를 바꾸면 이전 상태의 메모("로그 대기")가 새 상태의 라벨로 남지 않게 비운다
       sel.addEventListener('change', () => { note.value = sel.value === r.status ? r.status_note : ''; });
-      const submit = () => saveQuick(r, { status: sel.value, severity: sev.value, status_note: note.value.trim() });
+      // YouTrack 값으로 잠긴 심각도는 저장하지 않는다 (콘솔에 저장된 값은 그대로)
+      const submit = () => saveQuick(r, { status: sel.value, ...(sev.disabled ? {} : { severity: sev.value }), status_note: note.value.trim() });
       note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
       box.append(el('div', { class: 'quick-form' }, sel, sev, note, quickButtons(submit)));
       sel.focus();
@@ -697,7 +706,7 @@
     // 심각도: 이 달 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
     const urgent = ['hotfix', 'critical', 'major'];
     $('kpi-sev').replaceChildren(...urgent.map((key) => {
-      const n = state.rows.filter((r) => r.status !== 'done' && L.severityKey(r) === key).length;
+      const n = state.rows.filter((r) => r.status !== 'done' && L.severityOf(r, state.yt) === key).length;
       const b = el('button', { type: 'button', class: 'legend-btn sev-kpi-btn' + (isActive('severity', key) ? ' active' : '') + (n ? '' : ' zero') },
         el('span', { class: 'dot' }), el('span', { text: L.severityLabel(key, state.lang) }), el('b', { text: String(n) }));
       b.style.setProperty('--c', L.SEVERITY[key].color);
@@ -779,7 +788,7 @@
     }));
 
     // 심각도별 (4단계 모두 표시, 0건은 비활성)
-    const sevCounts = Object.keys(L.SEVERITY).map((k) => [k, state.rows.filter((r) => L.severityKey(r) === k).length]);
+    const sevCounts = Object.keys(L.SEVERITY).map((k) => [k, state.rows.filter((r) => L.severityOf(r, state.yt) === k).length]);
     const sevMax = Math.max(1, ...sevCounts.map(([, n]) => n));
     $('severity-list').replaceChildren(...sevCounts.map(([k, n]) => {
       const fill = el('span');
@@ -972,7 +981,12 @@
       f.version.value = row.version;
       f.title.value = row.title;
       f.status.value = row.status;
-      f.severity.value = L.severityKey(row);
+      // YouTrack Priority 가 있으면 그 값을 보여 주고 잠근다. 저장할 때는 콘솔에 저장된 값을 그대로 둔다
+      const ysf = L.ytSeverity(row, state.yt);
+      f.severity.value = ysf ? ysf.key : L.severityKey(row);
+      f.severity.disabled = !!ysf;
+      $('sev-yt-note').hidden = !ysf;
+      if (ysf) $('sev-yt-note').textContent = t('sev.fromYt', { ids: ysf.ids.join(', ') });
       f.status_note.value = row.status_note;
       fillAssigneeSelect(f.assignee, row.assignee || '');
       f.ticket_assignee.value = row.ticket_assignee || '';
@@ -987,6 +1001,8 @@
       f.received_at.value = toLocalInput(new Date().toISOString());
       f.status.value = 'open';
       f.severity.value = 'normal';
+      f.severity.disabled = false;
+      $('sev-yt-note').hidden = true;
       fillAssigneeSelect(f.assignee, '');
       $('form-meta').textContent = '';
     }
@@ -1023,7 +1039,7 @@
       version: f.version.value.trim(),
       title: f.title.value.trim(),
       status: f.status.value,
-      severity: f.severity.value,
+      severity: f.severity.disabled && state.editing ? L.severityKey(state.editing) : f.severity.value,
       status_note: f.status_note.value.trim(),
       assignee: f.assignee.value.trim(),
       ticket_assignee: f.ticket_assignee.value.trim(),
@@ -1244,7 +1260,7 @@
     // 사람이 쓴 칸은 화면 언어 쪽 (번역이 없으면 원문)
     const lines = [header, ...state.rows.map((r) => { const f = disp(r); return [
       fmtDateTime(r.received_at), r.reporter, r.customer, L.deviceLabel(r.device, state.lang), r.version,
-      f.title, L.severityLabel(L.severityKey(r), state.lang), L.statusLabel(r, state.lang, f), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
+      f.title, L.severityLabel(L.severityOf(r, state.yt), state.lang), L.statusLabel(r, state.lang, f), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
       L.ticketInfos(r, state.yt).filter((x) => x.yt).map((x) => `${x.id} ${x.yt.state}`).join('\n'),
       f.description, f.notes, f.timeline.join('\n'), r.tickets.join('\n'),
       fmtDateTime(r.created_at), fmtDateTime(r.updated_at),

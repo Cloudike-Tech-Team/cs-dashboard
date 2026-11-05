@@ -218,6 +218,9 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .sev-select.normal { color: var(--muted); border-color: transparent; background-color: transparent; font-weight: 500; }
 .cs-row:hover .sev-select.normal { border-color: var(--line); background-color: #FFFFFF; }
 .sev-select:disabled { opacity: .5; cursor: default; }
+/* YouTrack Priority 로 정해진 심각도: 잠겨 있지만 흐리지 않게, 화살표 대신 점선 밑줄 */
+.sev-select.from-yt:disabled { opacity: 1; cursor: help; background-image: none; padding-right: 6px; border-style: dashed; }
+.sev-select.normal.from-yt:disabled { border-color: transparent; }
 .cs-row:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
 .sev-kpi { display: flex; flex-direction: column; gap: 1px; align-items: flex-start; }
 .sev-kpi-btn.zero { opacity: .45; }

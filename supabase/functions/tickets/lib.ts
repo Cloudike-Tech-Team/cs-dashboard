@@ -24,6 +24,7 @@ export type YtTicket = {
   resolved: boolean;   // YouTrack 이 해결로 보는 상태 / Jira statusCategory=done
   assignees: string[]; // Assignee(또는 NPR 의 '개발 담당자')
   url: string;
+  priority: string;    // YouTrack Priority (Hot Fix · Critical · Major · Normal · Minor). 필드가 없거나 Jira 면 ''
 };
 
 type RawUser = { fullName?: string; name?: string; login?: string };
@@ -46,6 +47,7 @@ export function toTicket(raw: RawIssue, baseUrl: string): YtTicket {
   const asgField = fields.find((f) => ASSIGNEE_FIELDS.includes(f.name ?? ''));
   const av = asgField?.value;
   const assignees = (Array.isArray(av) ? av : av ? [av] : []).map(userName).filter(Boolean);
+  const pv = fields.find((f) => f.name === 'Priority')?.value as { name?: string } | null | undefined;
   const id = raw.idReadable ?? '';
   return {
     id,
@@ -55,6 +57,7 @@ export function toTicket(raw: RawIssue, baseUrl: string): YtTicket {
     resolved: raw.resolved != null,
     assignees,
     url: `${baseUrl.replace(/\/+$/, '')}/issue/${id}`,
+    priority: pv?.name ?? '',
   };
 }
 
@@ -86,6 +89,7 @@ export function jiraToTicket(raw: RawJira, siteUrl: string): YtTicket {
     resolved: f.status?.statusCategory?.key === 'done',
     assignees: a ? [a] : [],
     url: `${siteUrl.replace(/\/+$/, '')}/browse/${id}`,
+    priority: '',   // Jira 우선순위는 쓰지 않는다 (심각도는 YouTrack Priority 만)
   };
 }
 

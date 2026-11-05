@@ -27,6 +27,21 @@
   };
   function severityKey(row) { return SEVERITY[row.severity] ? row.severity : 'normal'; }
   function severityDef(row) { return SEVERITY[severityKey(row)]; }
+  // YouTrack Priority → 심각도. 티켓이 여러 개면 가장 급한 값. Priority 가 있는 티켓이 하나도 없으면 null
+  const PRIORITY_SEVERITY = { 'hot fix': 'hotfix', hotfix: 'hotfix', critical: 'critical', major: 'major', normal: 'normal', minor: 'normal' };
+  const SEVERITY_RANK = ['normal', 'major', 'critical', 'hotfix'];
+  function ytSeverity(row, yt) {
+    let best = null;
+    for (const x of ticketInfos(row, yt)) {
+      const key = x.yt && PRIORITY_SEVERITY[String(x.yt.priority || '').trim().toLowerCase()];
+      if (!key) continue;
+      if (!best || SEVERITY_RANK.indexOf(key) > SEVERITY_RANK.indexOf(best.key)) best = { key, ids: [x.id] };
+      else if (key === best.key) best.ids.push(x.id);
+    }
+    return best;
+  }
+  // 화면에 보이는 심각도: YouTrack 값이 있으면 그것, 없으면 콘솔에서 고른 값
+  function severityOf(row, yt) { const y = yt ? ytSeverity(row, yt) : null; return y ? y.key : severityKey(row); }
   function severityLabel(key, lang = 'ko') { const d = SEVERITY[key] || SEVERITY.normal; return lang === 'en' ? d.en : d.label; }
 
   // 기기 값(DB)은 그대로 두고 영어 화면에서만 이름을 바꾼다
@@ -166,11 +181,11 @@
     };
   }
 
-  function applyFilter(rows, filter, issues) {
+  function applyFilter(rows, filter, issues, yt) {
     if (!filter) return rows;
     if (filter.type === 'device') return rows.filter((r) => r.device === filter.value);
     if (filter.type === 'status') return rows.filter((r) => (STATUS[r.status] ? r.status : 'open') === filter.value);
-    if (filter.type === 'severity') return rows.filter((r) => severityKey(r) === filter.value);
+    if (filter.type === 'severity') return rows.filter((r) => severityOf(r, yt) === filter.value);
     if (filter.type === 'assignee') return rows.filter((r) => (r.assignee || '') === filter.value);
     const issue = issues[filter.value];
     if (!issue) return rows;
@@ -183,7 +198,8 @@
     const needle = (q || '').trim().toLowerCase();
     if (!needle) return true;
     const ytText = ticketInfos(row, yt).flatMap((x) => (x.yt ? [x.yt.state, ...x.yt.assignees] : []));
-    const sev = severityKey(row) === 'normal' ? [] : [severityDef(row).label, severityDef(row).en];
+    const sk = severityOf(row, yt);
+    const sev = sk === 'normal' ? [] : [SEVERITY[sk].label, SEVERITY[sk].en];
     return [...ytText, ...extra, row.title, row.reporter, row.customer, row.version, row.description, row.notes,
       statusLabel(row), statusDef(row).en, ...sev, row.assignee, row.ticket_assignee, ...(row.timeline || []), ...(row.tickets || [])]
       .some((v) => (v || '').toLowerCase().includes(needle));
@@ -242,7 +258,7 @@
   }
 
   return {
-    dragTarget, dragShift,
+    dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,

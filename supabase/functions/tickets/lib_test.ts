@@ -20,7 +20,7 @@ Deno.test('toTicket: 일반 프로젝트 (State · Assignee)', () => {
   }, 'https://yt.cloudike.io/');
   assertEquals(t, {
     id: 'NRF-4817', source: 'youtrack', summary: '요약', state: 'In Testing', resolved: false,
-    assignees: ['Toussaint Aurelien'], url: 'https://yt.cloudike.io/issue/NRF-4817',
+    assignees: ['Toussaint Aurelien'], url: 'https://yt.cloudike.io/issue/NRF-4817', priority: '',
   });
 });
 
@@ -67,8 +67,20 @@ Deno.test('jiraToTicket: 상태·완료 분류·담당', () => {
   }, 'https://cloudike.atlassian.net/');
   assertEquals(t, {
     id: 'CLDA-82', source: 'jira', summary: 's', state: '진행 불가 (재현X)', resolved: true,
-    assignees: ['Seungyeon Yoo'], url: 'https://cloudike.atlassian.net/browse/CLDA-82',
+    assignees: ['Seungyeon Yoo'], url: 'https://cloudike.atlassian.net/browse/CLDA-82', priority: '',
   });
   const u = jiraToTicket({ key: 'CLDA-1', fields: { status: { name: '원인 분석중', statusCategory: { key: 'new' } }, assignee: null } }, 'https://x');
   assertEquals([u.resolved, u.assignees, u.summary], [false, [], '']);
+});
+
+Deno.test('toTicket: Priority 필드 값을 priority 로 (없으면 빈 문자열)', () => {
+  const t = toTicket({
+    idReadable: 'NRF-5031', customFields: [
+      { $type: 'SingleEnumIssueCustomField', name: 'Priority', value: { name: 'Hot Fix' } },
+      { $type: 'StateIssueCustomField', name: 'State', value: { name: 'In Progress' } },
+    ],
+  }, 'https://y');
+  assertEquals(t.priority, 'Hot Fix');
+  assertEquals(toTicket({ idReadable: 'NPR-1', customFields: [] }, 'https://y').priority, '');
+  assertEquals(jiraToTicket({ key: 'CLDA-1', fields: {} }, 'https://j').priority, '');
 });

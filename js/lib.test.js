@@ -320,3 +320,29 @@ test('dragTarget·dragShift: 끄는 줄 중심 위치로 놓일 순서, 다른 �
   assert.deepEqual([0, 1, 2].map((j) => L.dragShift(j, 3, 0)), [1, 1, 1]);
   assert.equal(L.dragShift(2, 1, 1), 0);
 });
+
+test('ytSeverity·severityOf: YouTrack Priority 가 있으면 그 값(여러 티켓이면 가장 급한 것), 없으면 콘솔 값', () => {
+  const yt = {
+    'NRF-1': { state: 'To Do', resolved: false, assignees: [], priority: 'Major' },
+    'NRF-2': { state: 'To Do', resolved: false, assignees: [], priority: 'Hot Fix' },
+    'NRF-3': { state: 'To Do', resolved: false, assignees: [], priority: 'Minor' },
+    'NPR-9': { state: '검토중', resolved: false, assignees: [], priority: '' },
+    'CLDA-1': { state: 'x', resolved: false, assignees: [], priority: '' },
+  };
+  assert.deepEqual(L.ytSeverity(row({ tickets: ['NRF-1', 'NRF-2'] }), yt), { key: 'hotfix', ids: ['NRF-2'] });
+  assert.deepEqual(L.ytSeverity(row({ tickets: ['NRF-3'] }), yt), { key: 'normal', ids: ['NRF-3'] });
+  assert.equal(L.ytSeverity(row({ tickets: ['NPR-9', 'CLDA-1'] }), yt), null);
+  assert.equal(L.ytSeverity(row({ tickets: [] }), yt), null);
+  assert.equal(L.ytSeverity(row({ tickets: ['NRF-1'] }), {}), null);      // 아직 못 읽음
+  assert.equal(L.severityOf(row({ tickets: ['NRF-2'], severity: 'normal' }), yt), 'hotfix');
+  assert.equal(L.severityOf(row({ tickets: ['NPR-9'], severity: 'major' }), yt), 'major');
+  assert.equal(L.severityOf(row({ severity: 'critical' })), 'critical');
+});
+
+test('applyFilter·matchesSearch: 심각도는 YouTrack 값 기준', () => {
+  const yt = { 'NRF-2': { state: 'To Do', resolved: false, assignees: [], priority: 'Critical' } };
+  const rows = [row({ id: 1, tickets: ['NRF-2'], severity: 'normal' }), row({ id: 2, severity: 'critical' })];
+  assert.deepEqual(L.applyFilter(rows, { type: 'severity', value: 'critical' }, [], yt).map((r) => r.id), [1, 2]);
+  assert.deepEqual(L.applyFilter(rows, { type: 'severity', value: 'normal' }, [], yt).map((r) => r.id), []);
+  assert.equal(L.matchesSearch(rows[0], '크리티컬', yt), true);
+});

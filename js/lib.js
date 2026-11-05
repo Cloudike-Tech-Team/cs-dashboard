@@ -229,7 +229,20 @@
     return translated > 0 ? 'continue' : 'stuck';
   }
 
+  // 목록 끌기: centers 는 원래 순서의 줄 중심(y), idx 는 끄는 줄. 끄는 줄 중심이 y 일 때 놓일 순서
+  function dragTarget(centers, idx, y) {
+    return centers.filter((c, j) => j !== idx && c < y).length;
+  }
+  // 다른 줄 j 가 비켜 갈 방향: -1 위로, +1 아래로, 0 그대로
+  function dragShift(j, idx, target) {
+    if (j === idx) return 0;
+    if (idx < target && j > idx && j <= target) return -1;
+    if (target < idx && j >= target && j < idx) return 1;
+    return 0;
+  }
+
   return {
+    dragTarget, dragShift,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,

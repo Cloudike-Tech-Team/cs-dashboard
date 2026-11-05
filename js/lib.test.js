@@ -307,3 +307,16 @@ test('backfillStep: 남은 건이 없으면 완료, 남았는데 한 건도 못 
   assert.equal(L.backfillStep(10, 4), 'continue');
   assert.equal(L.backfillStep(0, 4), 'stuck');
 });
+
+test('dragTarget·dragShift: 끄는 줄 중심 위치로 놓일 순서, 다른 줄이 비켜 갈 방향', () => {
+  const centers = [10, 50, 90, 130];            // 원래 순서의 줄 중심
+  assert.equal(L.dragTarget(centers, 3, 5), 0);  // 맨 아래 줄을 맨 위로
+  assert.equal(L.dragTarget(centers, 0, 100), 2);
+  assert.equal(L.dragTarget(centers, 0, 200), 3);
+  assert.equal(L.dragTarget(centers, 1, 52), 1); // 제자리
+  // 0번을 2번 자리로: 1·2번은 위로(-1), 3번은 그대로
+  assert.deepEqual([1, 2, 3].map((j) => L.dragShift(j, 0, 2)), [-1, -1, 0]);
+  // 3번을 0번 자리로: 0·1·2번은 아래로(+1)
+  assert.deepEqual([0, 1, 2].map((j) => L.dragShift(j, 3, 0)), [1, 1, 1]);
+  assert.equal(L.dragShift(2, 1, 1), 0);
+});

@@ -284,8 +284,14 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
 .drag-handle { flex: none; width: 24px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px; line-height: 1; cursor: grab; touch-action: none; border-radius: 2px; }
 .drag-handle:hover { color: var(--text); background: var(--panel); }
 .drag-handle:active { cursor: grabbing; }
-.list-row.dragging { opacity: .55; }
-.list-row.dragging input { border-style: dashed; }
+/* 끄는 중: 잡은 줄은 떠 보이고, 다른 줄은 부드럽게 비켜 가고, 놓일 자리는 점선 칸 */
+.list-items { position: relative; }
+.list-row.dragging { position: relative; z-index: 2; background: #FFFFFF; border-radius: 3px; box-shadow: 0 8px 22px rgba(17, 19, 24, .18), 0 0 0 1px var(--line); }
+.list-row.dragging .drag-handle { cursor: grabbing; color: var(--text); }
+.list-row.shifting { transition: transform .16s ease; }
+.drop-slot { position: absolute; left: 0; right: 0; z-index: 1; border: 2px dashed var(--link); border-radius: 3px; background: rgba(29, 78, 216, .06); pointer-events: none; transition: top .16s ease; }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select: none; }
+@media (prefers-reduced-motion: reduce) { .list-row.shifting, .drop-slot { transition: none; } }
 .delete-zone { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .paste-box { border: 1px dashed var(--line); padding: 8px 12px; background: var(--panel); }
 .paste-box > summary { cursor: pointer; font-weight: 500; font-size: 12px; }

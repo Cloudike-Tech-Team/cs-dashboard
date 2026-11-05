@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-7';
+  const APP_VERSION = '20261105-9';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -886,25 +886,53 @@
   // 줄 순서 손잡이: 마우스·터치로 끌면 포인터 위치에 맞춰 줄을 옮기고, 포커스된 상태에서 ↑↓ 키로 한 칸씩
   function dragHandle(getRow) {
     const h = el('button', { type: 'button', class: 'drag-handle', 'aria-label': t('f.dragHandle'), title: t('f.dragHandle'), text: '⠿' });
+    // 끄는 동안: 잡은 줄은 포인터를 따라 떠서 움직이고, 다른 줄은 비켜 주며, 놓일 자리는 점선 칸으로 표시.
+    // DOM 순서는 손을 놓을 때 한 번만 바꾼다 (끄는 중에 줄을 옮기면 화면이 뚝뚝 끊기고 포인터 추적도 끊김)
     h.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
       const row = getRow();
       const list = row.parentElement;
-      // 줄을 DOM 에서 옮기면 포인터 캡처가 풀리므로 document 에서 받는다
+      const rows = [...list.children].filter((x) => x.classList.contains('list-row'));
+      const idx = rows.indexOf(row);
+      const rects = rows.map((x) => x.getBoundingClientRect());
+      const centers = rects.map((r) => r.top + r.height / 2);
+      const gap = rows.length > 1 ? rects[1].top - rects[0].bottom : 6;
+      // 화면 좌표(getBoundingClientRect)와 CSS px 의 비율. CSS zoom 이 걸린 화면에서도 위치가 맞게
+      const z = (rects[idx].height / row.offsetHeight) || 1;
+      const step = (rects[idx].height + gap) / z;   // 비켜 갈 거리 (CSS px)
+      const listTop = list.getBoundingClientRect().top;
+      const startY = e.clientY;
+      const slot = el('div', { class: 'drop-slot', 'aria-hidden': 'true' });
+      slot.style.height = `${row.offsetHeight}px`;
+      list.append(slot);
       row.classList.add('dragging');
-      const move = (ev) => {
-        // 포인터보다 아래에 중심이 있는 첫 줄 앞으로 (없으면 맨 끝)
-        const others = [...list.children].filter((x) => x !== row);
-        const next = others.find((x) => { const r = x.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
-        if (next) { if (next !== row.nextElementSibling) list.insertBefore(row, next); }
-        else if (list.lastElementChild !== row) list.append(row);
+      rows.forEach((x) => { if (x !== row) x.classList.add('shifting'); });
+      document.body.classList.add('is-dragging');
+      let target = idx;
+      const place = (dy) => {
+        row.style.transform = `translateY(${dy / z}px)`;
+        target = L.dragTarget(centers, idx, centers[idx] + dy);
+        rows.forEach((x, j) => { if (x !== row) x.style.transform = `translateY(${L.dragShift(j, idx, target) * step}px)`; });
+        // 놓일 자리: 위로 갈 때는 그 줄의 원래 위치, 아래로 갈 때는 그 줄의 아래 끝에 맞춘 위치
+        const top = target <= idx ? rects[target].top : rects[target].bottom - rects[idx].height;
+        slot.style.top = `${(top - listTop) / z}px`;
       };
+      place(0);
+      const move = (ev) => place(ev.clientY - startY);
       const end = () => {
-        row.classList.remove('dragging');
         document.removeEventListener('pointermove', move);
         document.removeEventListener('pointerup', end);
         document.removeEventListener('pointercancel', end);
+        rows.forEach((x) => { x.classList.remove('shifting'); x.style.transform = ''; });
+        row.classList.remove('dragging');
+        document.body.classList.remove('is-dragging');
+        slot.remove();
+        if (target !== idx) {
+          const rest = rows.filter((x) => x !== row);
+          if (target >= rest.length) rest[rest.length - 1].after(row); else rest[target].before(row);
+        }
+        h.focus();
       };
       document.addEventListener('pointermove', move);
       document.addEventListener('pointerup', end);

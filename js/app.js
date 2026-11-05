@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-4';
+  const APP_VERSION = '20261105-5';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -861,17 +861,28 @@
   const dialog = $('cs-dialog');
   const form = $('cs-form');
 
-  function addListItem(name, value = '') {
+  // after: 이 줄 바로 아래에 넣는다 (없으면 맨 끝)
+  function addListItem(name, value = '', after = null) {
     const list = form.querySelector(`[data-list="${name}"]`);
     const input = el('input', {
       type: 'text', maxlength: '2000',
       placeholder: name === 'timeline' ? t('f.timelinePh') : t('f.ticketPh'),
     });
     input.value = value;
-    const remove = el('button', { type: 'button', class: 'btn ghost small', 'aria-label': t('f.removeItem'), text: '−' });
-    remove.addEventListener('click', () => row.remove());
-    const row = el('div', { class: 'list-row' }, input, remove);
-    list.append(row);
+    const btn = (text, label, onClick) => {
+      const b = el('button', { type: 'button', class: 'btn ghost small', 'aria-label': label, title: label, text });
+      b.addEventListener('click', onClick);
+      return b;
+    };
+    const remove = btn('−', t('f.removeItem'), () => row.remove());
+    // 처리 타임라인은 순서를 바꾸거나 중간에 넣을 수 있다
+    const order = name === 'timeline' ? [
+      btn('↑', t('f.moveUp'), () => { if (row.previousElementSibling) row.previousElementSibling.before(row); input.focus(); }),
+      btn('↓', t('f.moveDown'), () => { if (row.nextElementSibling) row.nextElementSibling.after(row); input.focus(); }),
+      btn('+', t('f.insertBelow'), () => addListItem(name, '', row).focus()),
+    ] : [];
+    const row = el('div', { class: 'list-row' }, input, ...order, remove);
+    if (after) after.after(row); else list.append(row);
     return input;
   }
   form.querySelectorAll('[data-add]').forEach((b) =>
@@ -939,7 +950,7 @@
     if (e.key !== 'Enter' || e.isComposing || e.target.tagName !== 'INPUT') return;
     e.preventDefault();
     const list = e.target.closest('[data-list]');
-    if (list) addListItem(list.dataset.list).focus();
+    if (list) addListItem(list.dataset.list, '', e.target.closest('.list-row')).focus();   // 지금 줄 바로 아래에
   });
 
   function readForm() {

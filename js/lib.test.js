@@ -205,3 +205,70 @@ test('applyFilter·matchesSearch: 심각도', () => {
   assert.equal(L.matchesSearch(row({ severity: 'critical' }), '크리티컬'), true);
   assert.equal(L.matchesSearch(row(), '보통'), false);
 });
+
+// ── 영문 버전: 언어별 라벨, 번역 표시
+test('statusLabel·deviceLabel: 언어별 라벨, 번역된 상태 메모 우선', () => {
+  assert.equal(L.statusLabel(row({ status: 'deploy' }), 'en'), 'Awaiting deploy');
+  assert.equal(L.statusLabel(row({ status: 'unknown' }), 'en'), 'Cause unknown');
+  assert.equal(L.statusLabel(row({ status_note: '로그 대기' }), 'en', { status_note: 'Waiting for logs' }), 'Waiting for logs');
+  assert.equal(L.statusLabel(row({ status_note: '로그 대기' }), 'ko'), '로그 대기');
+  assert.equal(L.deviceLabel('웹', 'en'), 'Web');
+  assert.equal(L.deviceLabel('기타', 'en'), 'Other');
+  assert.equal(L.deviceLabel('Android', 'en'), 'Android');
+  assert.equal(L.deviceLabel('웹', 'ko'), '웹');
+  assert.equal(L.severityLabel('hotfix', 'en'), 'Hotfix');
+  assert.equal(L.severityLabel('major', 'ko'), '중요');
+  assert.equal(L.recencyLabel('d30', 'en'), 'Last 30 days');
+});
+
+test('assigneeLine: 영어', () => {
+  assert.equal(L.assigneeLine(row(), null, 'en'), 'Unassigned');
+  assert.equal(L.assigneeLine(row({ assignee: 'Jihoon Kim', ticket_assignee: 'Marta' }), null, 'en'), 'Owner Jihoon Kim · Ticket Marta');
+});
+
+// 같은 리터럴을 supabase/functions/ai/lib_test.ts 에도 둔다 (브라우저·Edge Function 해시 규칙이 같아야 함)
+test('sourceText·sourceHash: 번역 칸을 정해진 순서로 이은 문자열의 SHA-256', async () => {
+  const r = row({ title: 'A', description: '', notes: '', status_note: '', timeline: ['11/04 접수'] });
+  assert.equal(L.sourceText(r), '["A","","","",["11/04 접수"]]');
+  assert.equal(await L.sourceHash(r), '6caa5ab1fcc2db1ff2968773421d27294fbaeb2dfdf6fe53097bea0e3d387d13');
+});
+
+test('hasHangul: 번역 칸 어디든 한글이 있으면 true', () => {
+  assert.equal(L.hasHangul(row({ title: 'Sync stops', description: '', notes: '' })), false);
+  assert.equal(L.hasHangul(row({ title: 'x', description: '', notes: '', timeline: ['접수'] })), true);
+});
+
+test('needsTranslation: 화면 언어 번역이 없거나 오래됐을 때만, 한국어 화면은 한글 없는 기록만', () => {
+  const kor = row({ title: '로그인 실패' });
+  const eng = row({ title: 'Login fails', description: 'x', notes: '' });
+  assert.equal(L.needsTranslation(kor, 'h', {}, 'ko'), false);
+  assert.equal(L.needsTranslation(kor, 'h', {}, 'en'), true);
+  assert.equal(L.needsTranslation(kor, 'h', { en: { source_hash: 'h' } }, 'en'), false);
+  assert.equal(L.needsTranslation(kor, 'h', { en: { source_hash: 'old' } }, 'en'), true);
+  assert.equal(L.needsTranslation(eng, 'h', {}, 'ko'), true);
+  assert.equal(L.needsTranslation(eng, 'h', undefined, 'ko'), true);
+  const empty = row({ title: '', description: '', notes: '', status_note: '', timeline: [] });
+  assert.equal(L.needsTranslation(empty, 'h', {}, 'en'), false);
+});
+
+test('displayFields: 최신 번역만 쓰고, 원문이 바뀌어 오래된 번역이면 원문', () => {
+  const r = row({ title: '로그인 실패', status_note: '로그 대기', timeline: ['11/04 접수'] });
+  const fresh = { en: { source_hash: 'h', fields: { title: 'Login fails', description: 'Desc', notes: '', status_note: 'Waiting for logs', timeline: ['11/04 Received'] } } };
+  const d = L.displayFields(r, 'h', fresh, 'en');
+  assert.equal(d.title, 'Login fails');
+  assert.deepEqual(d.timeline, ['11/04 Received']);
+  assert.equal(d.translated, true);
+  const stale = L.displayFields(r, 'h', { en: { ...fresh.en, source_hash: 'old' } }, 'en');
+  assert.equal(stale.title, '로그인 실패');
+  assert.equal(stale.translated, false);
+  const same = L.displayFields(row({ title: 'Same', description: '반복 다운로드', notes: '', timeline: [] }), 'h',
+    { en: { source_hash: 'h', fields: { title: 'Same', description: '반복 다운로드', notes: '', status_note: '', timeline: [] } } }, 'en');
+  assert.equal(same.translated, false);
+});
+
+test('matchesSearch: 번역문과 영어 라벨도 검색', () => {
+  assert.equal(L.matchesSearch(row({ title: '로그인' }), 'login', null, ['Login fails']), true);
+  assert.equal(L.matchesSearch(row({ severity: 'hotfix' }), 'hotfix'), true);
+  assert.equal(L.matchesSearch(row({ status: 'deploy' }), 'awaiting'), true);
+  assert.equal(L.matchesSearch(row(), 'zzz', null, ['Login fails']), false);
+});

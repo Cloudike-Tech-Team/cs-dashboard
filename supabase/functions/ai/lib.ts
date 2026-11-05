@@ -7,24 +7,39 @@ export class BadRequest extends Error {
   status = 400;
 }
 
-export type ParseRequest = { mode: 'parse'; text: string };
-export type SummarizeRequest = { mode: 'summarize'; month: string };
+export type Lang = 'ko' | 'en';
+export type ParseRequest = { mode: 'parse'; text: string; lang: Lang };
+export type SummarizeRequest = { mode: 'summarize'; month: string; lang: Lang };
+export type TranslateRequest = { mode: 'translate'; ids: string[]; lang: Lang };
+export type BackfillRequest = { mode: 'translate_backfill'; dry: boolean; lang: Lang };
+export type AiRequest = ParseRequest | SummarizeRequest | TranslateRequest | BackfillRequest;
 
-export function validateRequest(body: unknown): ParseRequest | SummarizeRequest {
+export const MAX_TRANSLATE_IDS = 20;
+
+export function validateRequest(body: unknown): AiRequest {
   if (!body || typeof body !== 'object') throw new BadRequest('요청 본문이 비어 있습니다.');
   const b = body as Record<string, unknown>;
+  const lang: Lang = b.lang === 'en' ? 'en' : 'ko';
+  if (b.mode === 'translate') {
+    const ids = b.ids;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > MAX_TRANSLATE_IDS || !ids.every((x) => typeof x === 'string' && x)) {
+      throw new BadRequest(`ids 는 1~${MAX_TRANSLATE_IDS}개의 문자열이어야 합니다.`);
+    }
+    return { mode: 'translate', ids: ids as string[], lang };
+  }
+  if (b.mode === 'translate_backfill') return { mode: 'translate_backfill', dry: b.dry === true, lang };
   if (b.mode === 'parse') {
     const text = typeof b.text === 'string' ? b.text.trim() : '';
     if (!text) throw new BadRequest('분석할 텍스트가 없습니다.');
     if (text.length > MAX_PARSE_CHARS) throw new BadRequest(`텍스트가 너무 깁니다 (최대 ${MAX_PARSE_CHARS}자).`);
-    return { mode: 'parse', text };
+    return { mode: 'parse', text, lang };
   }
   if (b.mode === 'summarize') {
     const month = typeof b.month === 'string' ? b.month : '';
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequest('month 는 YYYY-MM 형식이어야 합니다.');
-    return { mode: 'summarize', month };
+    return { mode: 'summarize', month, lang };
   }
-  throw new BadRequest('mode 는 parse 또는 summarize 여야 합니다.');
+  throw new BadRequest('mode 는 parse, summarize, translate, translate_backfill 중 하나여야 합니다.');
 }
 
 // 'YYYY-MM' → [from, to) ISO. KST(+09:00) 고정 오프셋.
@@ -249,4 +264,80 @@ export function buildSummaryMarkdown(month: string, rows: Ticket[], issues: Issu
   lines.push('', '### 특이사항');
   lines.push(...(notes.length ? notes.map((n) => `- **${n.customer}** ${clip(oneLine(n.text), MAX_NOTE_TEXT)}`) : ['- 없음']));
   return lines.join('\n');
+}
+
+// ───────────── 번역 (cs_ticket_translations) ─────────────
+// 원문 칸. 규칙을 바꾸면 js/lib.js 의 sourceText 도 같이 바꾼다 (양쪽 테스트가 같은 해시를 검사)
+export type TrFields = { title: string; description: string; notes: string; status_note: string; timeline: string[] };
+export type TrSource = TrFields & { id: string };
+export const MAX_TRANSLATE_ROWS_PER_CALL = 10;
+
+export function sourceText(r: Partial<TrFields>): string {
+  return JSON.stringify([r.title || '', r.description || '', r.notes || '', r.status_note || '', r.timeline || []]);
+}
+export async function sourceHash(r: Partial<TrFields>): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sourceText(r)));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// js/lib.js 의 TL_RE 와 같은 규칙. 날짜·시각 앞부분은 번역하지 않고 원문 그대로 다시 붙인다
+const TL_RE = /^(?:\d{4}-)?(\d{1,2})[/-](\d{1,2})(?:\s+\d{1,2}:\d{2})?(?:\s+|$)/;
+export function splitTimelinePrefix(entry: string): { prefix: string; text: string } {
+  const m = entry.match(TL_RE);
+  if (m) {
+    const mo = Number(m[1]), d = Number(m[2]);
+    if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) return { prefix: m[0], text: entry.slice(m[0].length) };
+  }
+  return { prefix: '', text: entry };
+}
+
+// 한 줄에 CS 하나씩 JSON. index 는 1부터
+export function translateInput(rows: TrSource[]): string {
+  return rows.map((r, i) => JSON.stringify({
+    index: i + 1, title: r.title || '', description: r.description || '', notes: r.notes || '', status_note: r.status_note || '',
+    timeline: (r.timeline || []).map((t) => splitTimelinePrefix(t).text),
+  })).join('\n');
+}
+
+// 번역문에서 사라지면 안 되는 것: 고객사·유저 번호, 티켓 ID, URL
+const KEEP_RES = [/\bcom\s?\d+/gi, /\buser\s?\d+/gi, /\b[A-Z][A-Z0-9_]*-\d+\b/g, /https?:\/\/\S+/g];
+function keepsTokens(orig: string, tr: string): boolean {
+  const squash = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+  const t = squash(tr);
+  return KEEP_RES.every((re) => (orig.match(re) || []).every((tok) => t.includes(squash(tok))));
+}
+
+const SCALARS = ['title', 'description', 'notes', 'status_note'] as const;
+function pickLang(raw: unknown, orig: TrSource): TrFields {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const out = {} as TrFields;
+  for (const k of SCALARS) {
+    const src = orig[k] || '';
+    const v = typeof o[k] === 'string' ? (o[k] as string).trim() : '';
+    out[k] = !src ? '' : v && keepsTokens(src, v) ? v : src;
+  }
+  const tl = orig.timeline || [];
+  const got = Array.isArray(o.timeline) ? o.timeline : null;
+  out.timeline = got && got.length === tl.length && got.every((x) => typeof x === 'string')
+    ? tl.map((entry, i) => {
+      const { prefix, text } = splitTimelinePrefix(entry);
+      const v = (got[i] as string).trim();
+      return v && keepsTokens(text, v) ? prefix + v : entry;
+    })
+    : [...tl];
+  return out;
+}
+
+// 모델 응답 { items: [{ index, ko, en }] } → id 별 두 언어. 잘못된 칸은 원문으로
+export function normalizeTranslation(raw: unknown, rows: TrSource[]): Map<string, { ko: TrFields; en: TrFields }> {
+  const out = new Map<string, { ko: TrFields; en: TrFields }>();
+  const items = raw && typeof raw === 'object' && Array.isArray((raw as { items?: unknown }).items) ? (raw as { items: unknown[] }).items : [];
+  for (const it of items) {
+    if (!it || typeof it !== 'object') continue;
+    const { index, ko, en } = it as { index?: unknown; ko?: unknown; en?: unknown };
+    const row = typeof index === 'number' && Number.isInteger(index) ? rows[index - 1] : undefined;
+    if (!row || out.has(row.id)) continue;
+    out.set(row.id, { ko: pickLang(ko, row), en: pickLang(en, row) });
+  }
+  return out;
 }

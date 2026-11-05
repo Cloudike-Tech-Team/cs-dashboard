@@ -1,17 +1,17 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  BadRequest, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
   normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
 Deno.test('validateRequest: parse 모드', () => {
-  assertEquals(validateRequest({ mode: 'parse', text: '  hi ' }), { mode: 'parse', text: 'hi' });
+  assertEquals(validateRequest({ mode: 'parse', text: '  hi ' }), { mode: 'parse', text: 'hi', lang: 'ko' });
   assertThrows(() => validateRequest({ mode: 'parse', text: '' }), BadRequest);
   assertThrows(() => validateRequest({ mode: 'parse', text: 'x'.repeat(8001) }), BadRequest);
 });
 
 Deno.test('validateRequest: summarize 모드', () => {
-  assertEquals(validateRequest({ mode: 'summarize', month: '2026-10' }), { mode: 'summarize', month: '2026-10' });
+  assertEquals(validateRequest({ mode: 'summarize', month: '2026-10', lang: 'en' }), { mode: 'summarize', month: '2026-10', lang: 'en' });
   assertThrows(() => validateRequest({ mode: 'summarize', month: '2026-13' }), BadRequest);
   assertThrows(() => validateRequest({ mode: 'summarize', month: '202610' }), BadRequest);
   assertThrows(() => validateRequest({ mode: 'other' }), BadRequest);
@@ -180,4 +180,71 @@ Deno.test('buildSummaryMarkdown: 미해결 30건 초과는 "외 N건", 특이사
   assertEquals(lines.includes('- 외 15건'), true);
   assertEquals(lines[lines.length - 1], '- **com1** ' + '특'.repeat(200) + '…');
   assertEquals(md.length <= 20000, true, `length ${md.length}`);
+});
+
+// ── 번역
+Deno.test('validateRequest: translate · translate_backfill', () => {
+  assertEquals(validateRequest({ mode: 'translate', ids: ['a', 'b'], lang: 'en' }), { mode: 'translate', ids: ['a', 'b'], lang: 'en' });
+  assertThrows(() => validateRequest({ mode: 'translate', ids: [] }), BadRequest);
+  assertThrows(() => validateRequest({ mode: 'translate', ids: Array.from({ length: 21 }, (_, i) => String(i)) }), BadRequest);
+  assertThrows(() => validateRequest({ mode: 'translate', ids: [1] }), BadRequest);
+  assertEquals(validateRequest({ mode: 'translate_backfill', dry: true }), { mode: 'translate_backfill', dry: true, lang: 'ko' });
+  assertEquals(validateRequest({ mode: 'translate_backfill', lang: 'xx' }), { mode: 'translate_backfill', dry: false, lang: 'ko' });
+});
+
+// js/lib.test.js 와 같은 리터럴: 브라우저와 같은 해시 규칙
+Deno.test('sourceText·sourceHash: 브라우저(js/lib.js)와 같은 규칙', async () => {
+  const r = { title: 'A', description: '', notes: '', status_note: '', timeline: ['11/04 접수'] };
+  assertEquals(sourceText(r), '["A","","","",["11/04 접수"]]');
+  assertEquals(await sourceHash(r), '6caa5ab1fcc2db1ff2968773421d27294fbaeb2dfdf6fe53097bea0e3d387d13');
+});
+
+Deno.test('splitTimelinePrefix: 앞의 날짜·시각을 원문 그대로 떼어 냄', () => {
+  assertEquals(splitTimelinePrefix('11/04 14:20 로그 요청'), { prefix: '11/04 14:20 ', text: '로그 요청' });
+  assertEquals(splitTimelinePrefix('2026-10-12 접수'), { prefix: '2026-10-12 ', text: '접수' });
+  assertEquals(splitTimelinePrefix('메모'), { prefix: '', text: '메모' });
+  assertEquals(splitTimelinePrefix('3.19.61 배포'), { prefix: '', text: '3.19.61 배포' });
+});
+
+Deno.test('translateInput: 번호 매긴 목록, 처리 이력은 날짜를 뗀 글만', () => {
+  const s = translateInput([{ id: 'x', title: '로그인 실패', description: '', notes: '', status_note: '', timeline: ['11/04 로그 요청'] }]);
+  assertEquals(s.includes('"index":1'), true);
+  assertEquals(s.includes('"timeline":["로그 요청"]'), true);
+  assertEquals(s.includes('11/04'), false);
+});
+
+const trRow = { id: 't1', title: 'com 831 로그인 실패', description: 'NRF-5031 확인', notes: '', status_note: '로그 대기', timeline: ['11/04 14:20 로그 요청', '메모'] };
+const both = (en: Record<string, unknown>, ko: Record<string, unknown> = {}) => ({
+  items: [{
+    index: 1,
+    ko: { title: trRow.title, description: trRow.description, notes: '', status_note: trRow.status_note, timeline: ['로그 요청', '메모'], ...ko },
+    en: { title: 'com 831 login fails', description: 'Checked NRF-5031', notes: '', status_note: 'Waiting for logs', timeline: ['Requested logs', 'Memo'], ...en },
+  }],
+});
+
+Deno.test('normalizeTranslation: 처리 이력에 날짜를 다시 붙임', () => {
+  const m = normalizeTranslation(both({}), [trRow]);
+  assertEquals(m.get('t1')!.en.timeline, ['11/04 14:20 Requested logs', 'Memo']);
+  assertEquals(m.get('t1')!.ko.timeline, trRow.timeline);
+  assertEquals(m.get('t1')!.en.title, 'com 831 login fails');
+});
+
+Deno.test('normalizeTranslation: 처리 이력 개수가 다르면 그 언어 이력은 원문', () => {
+  const m = normalizeTranslation(both({ timeline: ['Only one'] }), [trRow]);
+  assertEquals(m.get('t1')!.en.timeline, trRow.timeline);
+});
+
+Deno.test('normalizeTranslation: 고객사 번호·티켓 ID 가 번역문에서 사라지면 그 칸은 원문', () => {
+  const m = normalizeTranslation(both({ title: 'Company 831 login fails', description: 'Checked the ticket' }), [trRow]);
+  assertEquals(m.get('t1')!.en.title, trRow.title);
+  assertEquals(m.get('t1')!.en.description, trRow.description);
+  assertEquals(m.get('t1')!.en.status_note, 'Waiting for logs');
+});
+
+Deno.test('normalizeTranslation: 없는 번호는 무시, 빠진 언어는 원문, 원문이 빈 칸은 빈 칸', () => {
+  const m = normalizeTranslation({ items: [{ index: 9, ko: {}, en: {} }, { index: 1, en: { title: 'x', notes: 'should stay empty' } }] }, [trRow]);
+  assertEquals(m.size, 1);
+  assertEquals(m.get('t1')!.ko.title, trRow.title);
+  assertEquals(m.get('t1')!.en.notes, '');
+  assertEquals(normalizeTranslation(null, [trRow]).size, 0);
 });

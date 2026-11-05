@@ -120,3 +120,51 @@ export const SUMMARY_SYSTEM = `당신은 Cloudike 기술팀의 월간 CS 보고�
 공통:
 - 목록에 없는 내용을 추가하지 않습니다. 추측 표현("~로 보임")은 목록에 근거가 있을 때만 씁니다.
 - 한국어, 간결체.`;
+
+// ───────────── translate: CS 기록 → 한국어·영어 ─────────────
+// 입력은 한 줄에 CS 하나(JSON). 모델은 칸마다 ko·en 둘 다 돌려준다. 정규화(lib.ts normalizeTranslation)가 빠진 번호·토큰을 원문으로 되돌린다.
+
+const TR_FIELDS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'description', 'notes', 'status_note', 'timeline'],
+  properties: {
+    title: { type: 'string' },
+    description: { type: 'string' },
+    notes: { type: 'string' },
+    status_note: { type: 'string' },
+    timeline: { type: 'array', items: { type: 'string' }, description: '입력 timeline 과 같은 개수·순서.' },
+  },
+} as const;
+
+export const TRANSLATE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['items'],
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['index', 'ko', 'en'],
+        properties: {
+          index: { type: 'integer', description: '입력의 index 그대로.' },
+          ko: TR_FIELDS_SCHEMA,
+          en: TR_FIELDS_SCHEMA,
+        },
+      },
+    },
+  },
+} as const;
+
+export const TRANSLATE_SYSTEM = `당신은 Cloudike 기술팀의 CS 기록을 한국어와 영어로 옮기는 번역가입니다. 해외팀이 참고용으로 읽습니다. 주어진 JSON 스키마에 맞춰서만 답합니다.
+
+입력: 한 줄에 CS 하나씩 JSON 입니다. 칸은 title(제목), description(현상 설명), notes(특이사항), status_note(상태 메모), timeline(처리 이력, 날짜는 이미 떼어 냄).
+
+출력: 입력의 모든 CS 에 대해 같은 index 로 ko(한국어)와 en(영어)을 돌려줍니다.
+- 원문이 한국어면 ko 는 원문 그대로, en 은 영어 번역. 원문이 영어면 en 은 원문 그대로, ko 는 한국어 번역. 한 칸 안에 두 언어가 섞여 있으면 각 언어로 자연스럽게 옮깁니다.
+- 빈 칸은 빈 칸 그대로. timeline 은 입력과 같은 개수·순서.
+- 그대로 둘 것: 고객사·유저 번호(com 831, user 119607), 티켓 ID(NRF-5031, CLDA-82), URL, 사람 이름, 제품·플랫폼 이름(CLDAstream, PC client, Android, IOS, Win, MAC), 버전 번호, 파일 이름, 오류 메시지 원문(따옴표 안), 숫자와 단위.
+- 문체: 짧은 업무 메모체. 영어는 평이한 문장, 한국어는 간결체(~함, ~됨 또는 명사형). 원문에 없는 설명을 더하지 않습니다.
+- 용어: 접수=Received, 로그 요청=Requested logs, 재현=Reproduced, 배포=Deploy, 동기화=Sync, 공유 링크=Shared link, 트래픽 초과=Traffic exceeded.`;

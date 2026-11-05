@@ -208,8 +208,8 @@ test('applyFilter·matchesSearch: 심각도', () => {
 
 // ── 영문 버전: 언어별 라벨, 번역 표시
 test('statusLabel·deviceLabel: 언어별 라벨, 번역된 상태 메모 우선', () => {
-  assert.equal(L.statusLabel(row({ status: 'deploy' }), 'en'), 'Awaiting deploy');
-  assert.equal(L.statusLabel(row({ status: 'unknown' }), 'en'), 'Cause unknown');
+  assert.equal(L.statusLabel(row({ status: 'deploy' }), 'en'), 'To deploy');
+  assert.equal(L.statusLabel(row({ status: 'unknown' }), 'en'), 'Unknown');
   assert.equal(L.statusLabel(row({ status_note: '로그 대기' }), 'en', { status_note: 'Waiting for logs' }), 'Waiting for logs');
   assert.equal(L.statusLabel(row({ status_note: '로그 대기' }), 'ko'), '로그 대기');
   assert.equal(L.deviceLabel('웹', 'en'), 'Web');
@@ -269,6 +269,6 @@ test('displayFields: 최신 번역만 쓰고, 원문이 바뀌어 오래된 번�
 test('matchesSearch: 번역문과 영어 라벨도 검색', () => {
   assert.equal(L.matchesSearch(row({ title: '로그인' }), 'login', null, ['Login fails']), true);
   assert.equal(L.matchesSearch(row({ severity: 'hotfix' }), 'hotfix'), true);
-  assert.equal(L.matchesSearch(row({ status: 'deploy' }), 'awaiting'), true);
+  assert.equal(L.matchesSearch(row({ status: 'deploy' }), 'to deploy'), true);
   assert.equal(L.matchesSearch(row(), 'zzz', null, ['Login fails']), false);
 });

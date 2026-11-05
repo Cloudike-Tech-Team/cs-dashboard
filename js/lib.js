@@ -13,9 +13,9 @@
     open:    { label: '처리 중',     en: 'In progress',     color: '#B45309' },
     waiting: { label: '대기',        en: 'Waiting',         color: '#1D4ED8' },
     delayed: { label: '지연',        en: 'Delayed',         color: '#B91C1C' },
-    deploy:  { label: '배포대기',    en: 'Awaiting deploy', color: '#7C3AED' },
+    deploy:  { label: '배포대기',    en: 'To deploy',       color: '#7C3AED' },
     done:    { label: '완료',        en: 'Done',            color: '#15803D' },
-    unknown: { label: '원인 미확인', en: 'Cause unknown',   color: '#6B7280' },
+    unknown: { label: '원인 미확인', en: 'Unknown',         color: '#6B7280' },
   };
   // 심각도. 순서가 곧 select 표시 순서(가벼운 → 급한). 키는 DB check 제약(schema.sql)과 같아야 한다.
   // 보통은 기본값이라 목록에 배지를 달지 않는다.

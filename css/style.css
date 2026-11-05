@@ -167,7 +167,8 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .notes-list .cust { font-family: var(--mono); font-weight: 600; color: var(--text); margin-right: 4px; }
 
 /* 목록 */
-.list-head, .cs-row { display: grid; grid-template-columns: 60px 130px 110px 76px minmax(0, 1fr) 72px 84px 110px 110px; gap: 12px; align-items: center; }
+/* 상세를 열어 목록이 좁아지면 고객사·기기·티켓 칸이 줄어들고 현상 칸은 140px 이상 남는다 (넓을 때는 각 칸 최대 폭) */
+.list-head, .cs-row { display: grid; grid-template-columns: 60px minmax(80px, 130px) minmax(70px, 110px) 76px minmax(140px, 1fr) 72px 84px minmax(80px, 110px) minmax(80px, 110px); gap: 12px; align-items: center; }
 .list-head {
   padding: 6px 20px; border-bottom: 1px solid var(--line);
   font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em;
@@ -301,3 +302,22 @@ dialog::backdrop { background: rgba(17, 19, 24, .4); }
   .search input { width: 100%; }
   .toolbar-left, .toolbar-right, .search { width: 100%; }
 }
+
+/* 언어 버튼 (상단·로그인) */
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+.lang-switch button { font: inherit; font-size: 11px; height: 24px; padding: 0 8px; border: 0; background: #FFFFFF; color: var(--muted); cursor: pointer; }
+.lang-switch button + button { border-left: 1px solid var(--line); }
+.lang-switch button.on { background: var(--text); color: #FFFFFF; font-weight: 600; }
+.lang-switch button:not(.on):hover { background: var(--panel); color: var(--text); }
+.login-lang { align-self: center; }
+
+/* 번역 표시 */
+.tr-bar { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+
+/* 기존 기록 번역 */
+.backfill-box { border-top: 1px solid var(--line); margin-top: 8px; padding-bottom: 12px; }
+.backfill-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0; padding: 0 20px; }
+
+/* 영어 상세 라벨(Ticket owner 등)이 두 줄로 꺾이지 않게 (한국어 화면은 그대로).
+   목록 칸은 넓히지 않는다: 상세를 열면 현상 칸이 0 이 되므로 영어 라벨을 짧게 둔다 (예: To deploy) */
+html[lang="en"] .meta { grid-template-columns: 88px minmax(0, 1fr); }

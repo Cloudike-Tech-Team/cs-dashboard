@@ -222,7 +222,15 @@
     return { ...f, translated: JSON.stringify(TR_FIELDS.map((k) => f[k])) !== JSON.stringify(TR_FIELDS.map((k) => orig[k])) };
   }
 
+  // 기존 기록 번역 한 번 호출 뒤 다음 할 일. 남은 건이 없으면 완료(화면의 자동 번역이 먼저 끝냈어도),
+  // 남았는데 한 건도 못 했을 때만 멈춘다 (같은 실패를 무한 반복하지 않게)
+  function backfillStep(translated, remaining) {
+    if (remaining <= 0) return 'done';
+    return translated > 0 ? 'continue' : 'stuck';
+  }
+
   return {
+    backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
     STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,

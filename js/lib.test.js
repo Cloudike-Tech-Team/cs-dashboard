@@ -300,3 +300,10 @@ test('ticketState: 여러 티켓 라벨이 화면 언어', () => {
   assert.equal(L.ticketState(r, yt).label, 'Open 외 1');
   assert.equal(L.ticketState(r, yt, 'en').label, 'Open +1');
 });
+
+test('backfillStep: 남은 건이 없으면 완료, 남았는데 한 건도 못 했을 때만 멈춤', () => {
+  assert.equal(L.backfillStep(0, 0), 'done');      // 화면의 자동 번역이 먼저 끝낸 경우
+  assert.equal(L.backfillStep(5, 0), 'done');
+  assert.equal(L.backfillStep(10, 4), 'continue');
+  assert.equal(L.backfillStep(0, 4), 'stuck');
+});

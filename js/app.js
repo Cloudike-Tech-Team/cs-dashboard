@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105';
+  const APP_VERSION = '20261105-2';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -1424,11 +1424,13 @@
     b.msg = '';
     renderBackfill();
     try {
-      while (b.remaining > 0) {
+      for (;;) {
         const { translated, remaining } = await callFn('ai', { mode: 'translate_backfill' });
         b.remaining = remaining;
         renderBackfill();
-        if (!translated) throw new Error(t('fn.failed'));   // 한 건도 못 하면 멈춘다 (무한 반복 방지)
+        const step = L.backfillStep(translated, remaining);
+        if (step === 'done') break;
+        if (step === 'stuck') throw new Error(t('fn.failed'));
       }
       b.msg = t('bf.done');
     } catch (e) {

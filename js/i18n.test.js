@@ -4,11 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const I = require('./i18n.js');
 
-test('detectLang: 저장값 우선, 없으면 브라우저 첫 언어가 ko 면 ko, 아니면 en', () => {
+test('detectLang: 저장값 우선, 없으면 브라우저 선호 언어 목록 어디에든 ko 가 있으면 ko, 아니면 en', () => {
   assert.equal(I.detectLang('en', ['ko-KR']), 'en');
   assert.equal(I.detectLang('ko', ['en-US']), 'ko');
   assert.equal(I.detectLang(null, ['ko-KR', 'en']), 'ko');
-  assert.equal(I.detectLang(null, ['en-US', 'ko']), 'en');
+  assert.equal(I.detectLang(null, ['en-US', 'ko', 'en']), 'ko');   // 크롬 메뉴는 한국어인데 웹 선호 언어 1순위가 영어인 경우
+  assert.equal(I.detectLang(null, ['en-US', 'ja']), 'en');
   assert.equal(I.detectLang(null, []), 'en');
   assert.equal(I.detectLang('xx', ['ko']), 'ko');
 });

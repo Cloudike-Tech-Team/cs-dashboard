@@ -9,11 +9,11 @@
 
   const LANGS = ['ko', 'en'];
 
-  // 저장된 선택(상단 버튼) 우선, 없으면 브라우저 첫 언어가 한국어면 ko, 그 외는 en
+  // 저장된 선택(상단 버튼) 우선, 없으면 브라우저 선호 언어 목록 어디에든 한국어가 있으면 ko, 그 외는 en.
+  // (크롬 메뉴가 한국어여도 웹 선호 언어 1순위가 영어인 경우가 많아서 순서는 보지 않는다)
   function detectLang(stored, navLangs) {
     if (LANGS.includes(stored)) return stored;
-    const first = String((navLangs || [])[0] || '').toLowerCase();
-    return first.startsWith('ko') ? 'ko' : 'en';
+    return (navLangs || []).some((l) => String(l || '').toLowerCase().startsWith('ko')) ? 'ko' : 'en';
   }
 
   const DICT = {

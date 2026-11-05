@@ -120,7 +120,7 @@ export const STATUS_LABEL: Record<Status, string> = {
 
 // "처리 중(로그 대기)" 형태. 모델 입력과 마크다운에 공통 사용.
 export const STATUS_LABEL_EN: Record<Status, string> = {
-  open: 'In progress', waiting: 'Waiting', delayed: 'Delayed', deploy: 'Awaiting deploy', done: 'Done', unknown: 'Cause unknown',
+  open: 'In progress', waiting: 'Waiting', delayed: 'Delayed', deploy: 'To deploy', done: 'Done', unknown: 'Unknown',
 };
 const DEVICE_EN: Record<string, string> = { '웹': 'Web', '기타': 'Other' };
 const MONTH_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261105-10">
-  <link rel="stylesheet" href="css/style.css?v=20261105-10">
+  <meta name="app-version" content="20261106">
+  <link rel="stylesheet" href="css/style.css?v=20261106">
 </head>
 <body>
   <!-- 로그인 -->
@@ -163,9 +163,12 @@
       <aside id="detail" class="detail" aria-label="CS 상세" data-i18n-aria="detail.aria" hidden>
         <div class="panel-head">
           <span id="detail-when" class="mono muted small"></span>
-          <button id="detail-close" class="btn icon xs" type="button" aria-label="상세 닫기" data-i18n-aria="detail.close">
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
+          <span class="panel-head-actions">
+            <button id="detail-popup" class="btn xs" type="button" data-i18n="detail.popup">팝업으로 보기</button>
+            <button id="detail-close" class="btn icon xs" type="button" aria-label="상세 닫기" data-i18n-aria="detail.close">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </span>
         </div>
         <div class="detail-body">
           <div>
@@ -298,9 +301,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261105-10"></script>
-  <script src="js/i18n.js?v=20261105-10"></script>
-  <script src="js/lib.js?v=20261105-10"></script>
-  <script src="js/app.js?v=20261105-10"></script>
+  <script src="js/config.js?v=20261106"></script>
+  <script src="js/i18n.js?v=20261106"></script>
+  <script src="js/lib.js?v=20261106"></script>
+  <script src="js/app.js?v=20261106"></script>
 </body>
 </html>

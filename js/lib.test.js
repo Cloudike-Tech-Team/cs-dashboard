@@ -346,3 +346,10 @@ test('applyFilter·matchesSearch: 심각도는 YouTrack 값 기준', () => {
   assert.deepEqual(L.applyFilter(rows, { type: 'severity', value: 'normal' }, [], yt).map((r) => r.id), []);
   assert.equal(L.matchesSearch(rows[0], '크리티컬', yt), true);
 });
+
+test('popupPlace: 새 팝업은 계단식으로 비켜 열리고 화면 밖으로 나가지 않음', () => {
+  assert.deepEqual(L.popupPlace(0, 1600, 900, 400, 500), { x: 120, y: 90 });
+  assert.deepEqual(L.popupPlace(1, 1600, 900, 400, 500), { x: 152, y: 122 });
+  assert.deepEqual(L.popupPlace(8, 1600, 900, 400, 500), { x: 120, y: 90 });   // 8개마다 처음 자리로
+  assert.deepEqual(L.popupPlace(7, 500, 600, 400, 500), { x: 84, y: 84 });     // 좁은 화면: 오른쪽·아래 끝에 맞춤 (여백 16)
+});

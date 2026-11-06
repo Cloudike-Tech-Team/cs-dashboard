@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261105-10';
+  const APP_VERSION = '20261106';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -152,6 +152,7 @@
       loadMonth();
       checkBackfill();
     } else {
+      [...popups.keys()].forEach(closePopup);
       state.rows = [];
       state.selected = null;
       state.filter = null;
@@ -537,6 +538,7 @@
   function selectedRow() { return allRows().find((x) => x.id === state.selected) || null; }
 
   function renderDetail() {
+    renderPopups();   // 떠 있는 팝업도 같은 데이터로 다시 그린다
     const r = selectedRow();
     $('detail').hidden = !r;
     if (!r) return;
@@ -684,6 +686,7 @@
   $('assignee-btn').addEventListener('click', () => { state.quick = 'assignee'; renderDetail(); });
   $('edit-btn').addEventListener('click', () => { const r = selectedRow(); if (r) openDialog(r); });
   $('detail-close').addEventListener('click', () => { state.selected = null; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); });
+  $('detail-popup').addEventListener('click', () => { if (state.selected) openPopup(state.selected); });
   $('tr-toggle').addEventListener('click', () => { state.showOriginal = !state.showOriginal; renderDetail(); });
 
   // ───────────── KPI · 사이드바 ─────────────
@@ -1433,6 +1436,97 @@
     const orig = state.editing;
     form.elements.status_note.value = orig && statusSelect.value === orig.status ? orig.status_note : '';
   });
+  // ───────────── 팝업 상세 ─────────────
+  // 상세 패널의 「팝업으로 보기」. 바탕을 눌러도 닫히지 않고 여러 개 띄울 수 있다(같은 CS 는 하나만).
+  // 머리글을 끌어 옮기고, 누른 팝업이 맨 앞으로. 달을 옮겨도 남아 있고, 데이터가 바뀌면 다시 그린다.
+  const popups = new Map();   // id → { box, row }
+  let popupZ = 40;
+  function bringFront(box) { box.style.zIndex = String(++popupZ); }
+  function openPopup(id) {
+    if (popups.has(id)) { bringFront(popups.get(id).box); return; }
+    const row = allRows().find((x) => x.id === id);
+    if (!row) return;
+    const box = el('section', { class: 'cs-popup', role: 'dialog', 'aria-modal': 'false' });
+    const w = Math.min(400, innerWidth - 32), h = Math.min(560, innerHeight - 32);
+    const { x, y } = L.popupPlace(popups.size, innerWidth, innerHeight, w, h);
+    box.style.left = `${x}px`;
+    box.style.top = `${y}px`;
+    box.addEventListener('pointerdown', () => bringFront(box));
+    popups.set(id, { box, row });
+    document.body.append(box);
+    renderPopup(id);
+    bringFront(box);
+  }
+  function closePopup(id) { const p = popups.get(id); if (p) { p.box.remove(); popups.delete(id); } }
+  function renderPopups() { [...popups.keys()].forEach(renderPopup); }
+  // 머리글을 잡고 끌어 옮긴다 (화면 밖으로 다 나가지 않게)
+  function popupDrag(head, box) {
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('button')) return;
+      e.preventDefault();
+      const sx = e.clientX - box.offsetLeft, sy = e.clientY - box.offsetTop;
+      const move = (ev) => {
+        box.style.left = `${Math.max(8 - box.offsetWidth + 80, Math.min(ev.clientX - sx, innerWidth - 80))}px`;
+        box.style.top = `${Math.max(0, Math.min(ev.clientY - sy, innerHeight - 40))}px`;
+      };
+      const end = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); document.removeEventListener('pointercancel', end); };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    });
+  }
+  function renderPopup(id) {
+    const p = popups.get(id);
+    const r = allRows().find((x) => x.id === id) || p.row;   // 다른 달로 옮겨도 마지막으로 본 내용을 유지
+    p.row = r;
+    const f = disp(r);
+    const ys = L.ytSeverity(r, state.yt);
+    const sk = ys ? ys.key : L.severityKey(r);
+    const pill = el('span', { class: 'status-pill', text: L.statusLabel(r, state.lang, f) });
+    pill.style.setProperty('--c', L.statusColor(r));
+    const sevPill = sk === 'normal' ? null : el('span', { class: 'sev-badge big', text: L.severityLabel(sk, state.lang) });
+    if (sevPill) sevPill.style.setProperty('--s', L.SEVERITY[sk].color);
+    const ta = L.ticketAssignees(r, state.yt);
+    const ts = L.ticketState(r, state.yt, state.lang);
+    const tsNode = ts ? el('span', { class: 'status-inline', text: ts.label, title: ts.title }) : el('span', { class: 'muted', text: r.tickets.length ? t('list.unknownState') : '—' });
+    if (ts) tsNode.style.setProperty('--c', ts.color);
+    const cs = el('span', { class: 'status-inline', text: L.statusLabel(r, state.lang, f) });
+    cs.style.setProperty('--c', L.statusColor(r));
+    const meta = [
+      ['col.customer', el('span', { class: 'mono bold', text: r.customer })],
+      ['col.device', el('span', { text: deviceLine(r) })],
+      ['col.received', el('span', { class: 'mono', text: fmtDateTime(r.received_at) })],
+      ['col.reporter', el('span', { text: r.reporter })],
+      ['col.csOwner', el('span', { class: r.assignee ? '' : 'muted', text: r.assignee || t('common.unassigned') })],
+      ['col.severity', el('span', { class: sk === 'normal' ? 'muted' : 'bold', text: L.severityLabel(sk, state.lang) + (ys ? ` · YouTrack ${ys.ids.join(', ')}` : '') })],
+      ['col.csStatus', cs],
+      ['col.ticketOwner', el('span', { class: ta.names.length ? '' : 'muted', text: ta.names.length ? ta.names.join(', ') : (r.tickets.length ? t('common.unassigned') : '—') })],
+      ['col.ticketStatus', tsNode],
+      ['col.tickets', el('span', { class: 'ticket-lines' }, ...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketLine) : [el('span', { class: 'muted small', text: t('common.none') })]))],
+    ].flatMap(([k, v]) => [el('dt', { text: t(k) }), el('dd', {}, v)]);
+    const history = f.timeline.length
+      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when }), el('span', { class: 'hist-dot' }), el('span', { text })); })
+      : [el('li', { class: 'muted', text: t('detail.noHistory') })];
+    const inList = allRows().some((x) => x.id === id);
+    const openBtn = el('button', { type: 'button', class: 'btn xs', text: t('popup.openInDetail') });
+    openBtn.disabled = !inList;
+    openBtn.addEventListener('click', () => { state.selected = id; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); });
+    const closeBtn = el('button', { type: 'button', class: 'btn icon xs', 'aria-label': t('popup.close'), title: t('popup.close'), text: '✕' });
+    closeBtn.addEventListener('click', () => closePopup(id));
+    const head = el('div', { class: 'popup-head', title: t('popup.drag') },
+      el('span', { class: 'mono muted small popup-when', text: `${fmtDateTime(r.received_at)} · ${r.customer}` }),
+      el('span', { class: 'panel-head-actions' }, openBtn, closeBtn));
+    popupDrag(head, p.box);
+    const body = el('div', { class: 'popup-body' },
+      el('div', {}, pill, sevPill, el('h2', { class: 'detail-title', text: f.title || t('list.noTitle') }),
+        f.translated ? el('div', { class: 'tr-bar' }, el('span', { text: t('tr.from', { lang: t(L.hasHangul(r) ? 'lang.ko' : 'lang.en') }) })) : null),
+      el('dl', { class: 'meta' }, meta),
+      el('div', { class: 'detail-section' }, el('h3', { text: t('detail.desc') }), el('p', { class: 'detail-desc', text: f.description || '—' })),
+      el('div', { class: 'detail-section' }, el('h3', { text: t('detail.history') }), el('ol', { class: 'history' }, history)));
+    p.box.setAttribute('aria-label', f.title || t('list.noTitle'));
+    p.box.replaceChildren(head, body);
+  }
+
   // ───────────── 번역 표시 (cs_ticket_translations) ─────────────
   // 원문은 cs_tickets 그대로. 번역본은 Edge Function `ai` 의 translate 모드가 만들어 저장한다.
   function disp(r) { return L.displayFields(r, L.cachedHash(state.hash[r.id], r), state.tr[r.id], state.lang); }

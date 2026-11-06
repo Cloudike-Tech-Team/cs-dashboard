@@ -257,7 +257,15 @@
     return 0;
   }
 
+  // 팝업 i 번째의 처음 위치: 계단식으로 32px 씩 비켜 열고(8개마다 처음 자리), 화면 밖으로 나가지 않게 (여백 16)
+  function popupPlace(i, vw, vh, w, h) {
+    const k = i % 8;
+    const clamp = (v, max) => Math.max(16, Math.min(v, max));
+    return { x: clamp(120 + k * 32, vw - w - 16), y: clamp(90 + k * 32, vh - h - 16) };
+  }
+
   return {
+    popupPlace,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

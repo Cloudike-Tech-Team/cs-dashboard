@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261106';
+  const APP_VERSION = '20261106-2';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -1451,10 +1451,13 @@
     const { x, y } = L.popupPlace(popups.size, innerWidth, innerHeight, w, h);
     box.style.left = `${x}px`;
     box.style.top = `${y}px`;
+    box.style.width = `${w}px`;
     box.addEventListener('pointerdown', () => bringFront(box));
     popups.set(id, { box, row });
     document.body.append(box);
     renderPopup(id);
+    // 내용이 길면 처음 높이를 h 로 묶는다 (그 뒤로는 오른쪽 아래 모서리로 자유롭게 늘리고 줄임)
+    if (box.offsetHeight > h) box.style.height = `${h}px`;
     bringFront(box);
   }
   function closePopup(id) { const p = popups.get(id); if (p) { p.box.remove(); popups.delete(id); } }
@@ -1474,6 +1477,19 @@
       document.addEventListener('pointerup', end);
       document.addEventListener('pointercancel', end);
     });
+  }
+  // 머리글 두 번 클릭: 크게 보기 ↔ 원래 크기·위치
+  function togglePopupBig(box) {
+    const keys = ['left', 'top', 'width', 'height'];
+    if (box.dataset.prev) {
+      const prev = JSON.parse(box.dataset.prev);
+      keys.forEach((k) => { box.style[k] = prev[k]; });
+      delete box.dataset.prev;
+      return;
+    }
+    box.dataset.prev = JSON.stringify(Object.fromEntries(keys.map((k) => [k, box.style[k]])));
+    const b = L.popupBig(innerWidth, innerHeight);
+    Object.assign(box.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
   }
   function renderPopup(id) {
     const p = popups.get(id);
@@ -1517,6 +1533,7 @@
       el('span', { class: 'mono muted small popup-when', text: `${fmtDateTime(r.received_at)} · ${r.customer}` }),
       el('span', { class: 'panel-head-actions' }, openBtn, closeBtn));
     popupDrag(head, p.box);
+    head.addEventListener('dblclick', (e) => { if (!e.target.closest('button')) togglePopupBig(p.box); });
     const body = el('div', { class: 'popup-body' },
       el('div', {}, pill, sevPill, el('h2', { class: 'detail-title', text: f.title || t('list.noTitle') }),
         f.translated ? el('div', { class: 'tr-bar' }, el('span', { text: t('tr.from', { lang: t(L.hasHangul(r) ? 'lang.ko' : 'lang.en') }) })) : null),

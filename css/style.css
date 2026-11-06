@@ -342,9 +342,9 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 html[lang="en"] .meta { grid-template-columns: 88px minmax(0, 1fr); }
 
 /* 팝업 상세: 바탕을 눌러도 닫히지 않는 떠 있는 창, 여러 개 */
-.cs-popup { position: fixed; z-index: 40; width: 400px; max-width: calc(100vw - 32px); max-height: min(560px, calc(100vh - 32px)); display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 14px 36px rgba(17, 19, 24, .2); }
+.cs-popup { position: fixed; z-index: 40; width: 400px; min-width: 320px; min-height: 240px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); display: flex; flex-direction: column; overflow: hidden; resize: both; background: #FFFFFF; border: 1px solid var(--line); border-radius: 4px; box-shadow: 0 14px 36px rgba(17, 19, 24, .2); }
 .popup-head { padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: move; user-select: none; touch-action: none; border-radius: 4px 4px 0 0; }
 .popup-when { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.popup-body { overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.popup-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
 .popup-body .detail-title { font-size: 15px; }
 html[lang="en"] .popup-body .meta { grid-template-columns: 88px minmax(0, 1fr); }

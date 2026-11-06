@@ -264,8 +264,14 @@
     return { x: clamp(120 + k * 32, vw - w - 16), y: clamp(90 + k * 32, vh - h - 16) };
   }
 
+  // 팝업 크게 보기: 화면 가운데, 폭 최대 760 · 높이 화면의 85% (여백 16)
+  function popupBig(vw, vh) {
+    const w = Math.min(760, vw - 32), h = Math.min(Math.round(vh * 0.85), vh - 32);
+    return { x: Math.round((vw - w) / 2), y: Math.round((vh - h) / 2), w, h };
+  }
+
   return {
-    popupPlace,
+    popupPlace, popupBig,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

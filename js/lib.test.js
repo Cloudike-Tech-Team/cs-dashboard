@@ -353,3 +353,8 @@ test('popupPlace: 새 팝업은 계단식으로 비켜 열리고 화면 밖으�
   assert.deepEqual(L.popupPlace(8, 1600, 900, 400, 500), { x: 120, y: 90 });   // 8개마다 처음 자리로
   assert.deepEqual(L.popupPlace(7, 500, 600, 400, 500), { x: 84, y: 84 });     // 좁은 화면: 오른쪽·아래 끝에 맞춤 (여백 16)
 });
+
+test('popupBig: 머리글 두 번 클릭 시 크게 보기 크기 (가운데, 최대 760×85%, 여백 16)', () => {
+  assert.deepEqual(L.popupBig(1600, 900), { x: 420, y: 68, w: 760, h: 765 });
+  assert.deepEqual(L.popupBig(600, 500), { x: 16, y: 38, w: 568, h: 425 });
+});

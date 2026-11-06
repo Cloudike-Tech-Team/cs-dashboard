@@ -306,15 +306,27 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 @media (max-width: 1000px) {
   .side, .list, .detail { flex: 1 1 100%; border-left: 0; border-right: 0; border-bottom: 1px solid var(--line); }
   .side, .detail { position: static; max-height: none; overflow: visible; }
+  .kpis { flex-wrap: wrap; } .kpi-donut { flex: 1 1 100%; } .kpi-tickets { border-left: 0; }
+}
+/* 목록 칸 수는 화면 폭이 아니라 목록 자체 폭을 따른다 (상세를 열면 목록이 좁아지므로).
+   전체 칸 최소 합 ≈ 881px → 기기를 빼면 ≈ 799px → 티켓 담당까지 빼면 ≈ 707px → 그보다 좁으면 두 줄 */
+.list { container: list / inline-size; }
+@container list (max-width: 890px) {
+  .list-head, .cs-row { grid-template-columns: 60px minmax(80px, 130px) 76px minmax(140px, 1fr) 72px 84px minmax(80px, 110px) minmax(80px, 110px); }
+  .col-device, .list-head > span:nth-child(3) { display: none; }
+}
+@container list (max-width: 800px) {
+  .list-head, .cs-row { grid-template-columns: 60px minmax(80px, 130px) 76px minmax(140px, 1fr) 72px 84px minmax(80px, 110px); }
+  .col-tasg, .list-head > span:nth-child(8) { display: none; }
+}
+@container list (max-width: 710px) {
   .list-head { display: none; }
-  .cs-row { grid-template-columns: 60px minmax(0, 1fr) 72px 96px; height: auto; padding: 8px 20px; gap: 6px 10px; }
+  .cs-row { grid-template-columns: 76px minmax(0, 1fr) 72px 96px; height: auto; padding: 8px 20px; gap: 6px 10px; }
   .col-who { grid-column: 2; }
-  .col-device { display: none; }
   .col-what { grid-column: 2; grid-row: 2; }
-  .col-tasg { grid-column: 3; grid-row: 2; }
+  .col-tasg { display: block; grid-column: 3; grid-row: 2; }
   .col-tstate { grid-column: 4; grid-row: 2; }
   .col-sev { grid-column: 1; grid-row: 2; }
-  .kpis { flex-wrap: wrap; } .kpi-donut { flex: 1 1 100%; } .kpi-tickets { border-left: 0; }
 }
 @media (max-width: 640px) {
   .topbar, .toolbar, .kpi { padding-left: 16px; padding-right: 16px; }

@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261106-3';
+  const APP_VERSION = '20261109-1';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -392,10 +392,18 @@
   // 티켓 담당·상태는 YouTrack·Jira 값 (티켓 담당은 트래커에서 못 읽으면 수동 입력값).
   // kind: 'month' | 'carry'(밀린 미해결: 제목 옆 경과일 D+N) | 'history'(전체 기간 검색)
   // 다른 달 행은 접수일에 연도를 붙인다 (보고 있는 달과 연도가 다르거나 전체 기간 검색이면 YY-MM-DD).
+  // 미해결 CS 의 접수 후 경과일 D+N (30일 이상은 빨갛게). 완료면 null
+  function ageNode(age) {
+    return age === null ? null : el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: t('list.age', { n: age }) });
+  }
+  function receivedNode(r) {
+    return [el('span', { text: fmtDateTime(r.received_at) }), ...(L.ageDays(r) === null ? [] : [' ', ageNode(L.ageDays(r))])];
+  }
+
   function rowNode(r, kind = 'month') {
     const carry = kind === 'carry';
     const p = kstParts(new Date(r.received_at));
-    const age = carry ? L.daysSince(r.received_at) : 0;
+    const age = L.ageDays(r);
     const withYear = kind === 'history' || (carry && p.year !== state.month.slice(0, 4));
     const when = withYear ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
     const f = disp(r);
@@ -407,7 +415,7 @@
       el('span', { class: 'col-sev' }, severitySelect(r)),
       el('span', { class: 'col-what' },
         el('span', { class: 'row-title', text: f.title || t('list.noTitle') }),
-        carry ? el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: t('list.age', { n: age }) }) : null,
+        ageNode(age),
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: t('list.ticketCount', { n: r.tickets.length }) }) : null),
       el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || t('common.unassigned'), title: L.assigneeLine(r, state.yt, state.lang) }),
       // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
@@ -565,7 +573,7 @@
     $('detail-title').textContent = f.title || t('list.noTitle');
     $('detail-customer').textContent = r.customer;
     $('detail-device').textContent = deviceLine(r);
-    $('detail-received').textContent = fmtDateTime(r.received_at);
+    $('detail-received').replaceChildren(...receivedNode(r));
     $('detail-reporter').textContent = r.reporter;
     $('detail-assignee').textContent = r.assignee || t('common.unassigned');
     $('detail-assignee').className = r.assignee ? '' : 'muted';
@@ -1511,7 +1519,7 @@
     const meta = [
       ['col.customer', el('span', { class: 'mono bold', text: r.customer })],
       ['col.device', el('span', { text: deviceLine(r) })],
-      ['col.received', el('span', { class: 'mono', text: fmtDateTime(r.received_at) })],
+      ['col.received', el('span', { class: 'mono' }, ...receivedNode(r))],
       ['col.reporter', el('span', { text: r.reporter })],
       ['col.csOwner', el('span', { class: r.assignee ? '' : 'muted', text: r.assignee || t('common.unassigned') })],
       ['col.severity', el('span', { class: sk === 'normal' ? 'muted' : 'bold', text: L.severityLabel(sk, state.lang) + (ys ? ` · YouTrack ${ys.ids.join(', ')}` : '') })],

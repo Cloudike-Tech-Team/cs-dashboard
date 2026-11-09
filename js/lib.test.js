@@ -164,6 +164,14 @@ test('daysSince: 24시간 단위, 미래는 0', () => {
   assert.equal(L.daysSince('2026-10-28T00:00:00+09:00', now), 0);
 });
 
+test('ageDays: 미해결이면 접수 후 경과일, 완료면 null', () => {
+  const now = Date.parse('2026-11-09T12:00:00+09:00');
+  assert.equal(L.ageDays(row({ received_at: '2026-11-04T14:20:00+09:00', status: 'open' }), now), 4);
+  assert.equal(L.ageDays(row({ received_at: '2026-11-09T09:00:00+09:00', status: 'waiting' }), now), 0);
+  assert.equal(L.ageDays(row({ received_at: '2026-10-01T09:00:00+09:00', status: 'deploy' }), now), 39);
+  assert.equal(L.ageDays(row({ received_at: '2026-10-01T09:00:00+09:00', status: 'done' }), now), null);
+});
+
 test('carryMonths: KST 월별, 완료 제외, 최근 월부터', () => {
   const rows = [
     row({ received_at: '2026-09-30T15:30:00Z', status: 'open' }),     // KST 10-01

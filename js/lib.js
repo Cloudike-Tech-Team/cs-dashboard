@@ -77,6 +77,10 @@
   function daysSince(iso, now = Date.now()) {
     return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86400000));
   }
+  // 목록 · 상세의 D+N. 완료된 CS 는 경과일을 보이지 않는다(null)
+  function ageDays(row, now = Date.now()) {
+    return row.status === 'done' ? null : daysSince(row.received_at, now);
+  }
 
   // 밀린 미해결의 접수 월(KST)별 건수. 완료 건은 빼고 최근 월부터. [['2026-10', 5], ['2026-08', 1]]
   const KST_YM = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit' });
@@ -276,7 +280,7 @@
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
-    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, ageDays, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

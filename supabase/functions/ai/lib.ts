@@ -49,6 +49,13 @@ export type AiRequest = ParseRequest | SummarizeRequest | TranslateRequest | Bac
 
 export const MAX_TRANSLATE_IDS = 20;
 
+// 고객 메일 주소는 앞글자 · @ · 도메인 앞글자만 남긴다 (hong@cloudike.io → h***@c***).
+// 가린 값에는 도메인 점이 없어 다시 걸리지 않는다. DB 트리거(schema.sql public.mask_emails)와 같은 규칙.
+const EMAIL_RE = /([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9])[A-Za-z0-9.-]*\.[A-Za-z]{2,}/g;
+export function maskEmails(s: string): string {
+  return s.replace(EMAIL_RE, '$1***@$2***');
+}
+
 export function validateRequest(body: unknown): AiRequest {
   if (!body || typeof body !== 'object') throw new BadRequest('emptyBody');
   const b = body as Record<string, unknown>;
@@ -65,7 +72,7 @@ export function validateRequest(body: unknown): AiRequest {
     const text = typeof b.text === 'string' ? b.text.trim() : '';
     if (!text) throw new BadRequest('noText');
     if (text.length > MAX_PARSE_CHARS) throw new BadRequest('textTooLong', { n: MAX_PARSE_CHARS });
-    return { mode: 'parse', text, lang };
+    return { mode: 'parse', text: maskEmails(text), lang };
   }
   if (b.mode === 'summarize') {
     const month = typeof b.month === 'string' ? b.month : '';
@@ -199,14 +206,14 @@ export type Parsed = {
 // 구조화 출력이라 스키마는 보장되지만, 방어적으로 한 번 더 정리.
 export function normalizeParsed(raw: unknown): Parsed {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-  const strOrNull = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const str = (v: unknown) => (typeof v === 'string' ? maskEmails(v.trim()) : '');
+  const strOrNull = (v: unknown) => (typeof v === 'string' && v.trim() ? maskEmails(v.trim()) : null);
   const device = (DEVICES as readonly string[]).includes(o.device as string) ? (o.device as Device) : null;
   let received_at = strOrNull(o.received_at);
   if (received_at && !/^(\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}$/.test(received_at)) received_at = null;
   const timeline = (Array.isArray(o.timeline) ? o.timeline : [])
     .filter((t): t is string => typeof t === 'string')
-    .map((t) => t.trim().slice(0, 2000))
+    .map((t) => maskEmails(t.trim()).slice(0, 2000))
     .filter(Boolean)
     .slice(0, 50);
   return {

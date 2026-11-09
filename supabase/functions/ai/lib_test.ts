@@ -1,7 +1,7 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
   chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
-  normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
+  maskEmails, normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
 Deno.test('validateRequest: parse 모드', () => {
@@ -324,4 +324,26 @@ Deno.test('translateInChunks: 잘림이 아닌 오류는 그대로 던짐', asyn
 
 Deno.test('SUMMARY_MAX_TOKENS: 영어판이 더해진 요약 출력이 잘리지 않게 8192 이상', () => {
   assertEquals(SUMMARY_MAX_TOKENS >= 8192, true);
+});
+
+Deno.test('maskEmails: 앞글자 · @ · 도메인 앞글자만 남긴다', () => {
+  assertEquals(maskEmails('hong.gildong@cloudike.io 로 로그인 실패'), 'h***@c*** 로 로그인 실패');
+  assertEquals(maskEmails('A_b+1@Mail.Example.co.kr'), 'A***@M***');
+  assertEquals(maskEmails('고객 kim@naver.com이 문의, 참조 lee@gmail.com.'), '고객 k***@n***이 문의, 참조 l***@g***.');
+  assertEquals(maskEmails('<mailto:park@daum.net|park@daum.net>'), '<mailto:p***@d***|p***@d***>');
+});
+
+Deno.test('maskEmails: 이미 가린 값 · 메일이 아닌 @ 는 그대로', () => {
+  assertEquals(maskEmails('h***@c*** 재문의'), 'h***@c*** 재문의');
+  assertEquals(maskEmails('@channel 확인 부탁, user@localhost, 2026-11-09'), '@channel 확인 부탁, user@localhost, 2026-11-09');
+  assertEquals(maskEmails(''), '');
+});
+
+Deno.test('validateRequest: parse 원문의 메일 주소는 Claude 에 보내기 전에 가린다', () => {
+  assertEquals(validateRequest({ mode: 'parse', text: ' hong@cloudike.io 동기화 안 됨 ' }), { mode: 'parse', text: 'h***@c*** 동기화 안 됨', lang: 'ko' });
+});
+
+Deno.test('normalizeParsed: 결과 필드의 메일 주소도 가린다', () => {
+  const p = normalizeParsed({ reporter: 'kim@a.com', customer: 'com 831 / hong@cloudike.io', title: 'x@y.com 로그인', description: 'd@e.org', notes: 'n@m.net', timeline: ['11-04 t@u.io 회신'] });
+  assertEquals([p.reporter, p.customer, p.title, p.description, p.notes, p.timeline[0]], ['k***@a***', 'com 831 / h***@c***', 'x***@y*** 로그인', 'd***@e***', 'n***@m***', '11-04 t***@u*** 회신']);
 });

@@ -290,3 +290,98 @@ alter table public.cs_monthly_summaries
   add column if not exists content_en text check (content_en is null or char_length(content_en) <= 20000),
   add column if not exists issues_en  jsonb,
   add column if not exists notes_en   jsonb;
+
+-- ─────────────────────────────────────────────
+-- 8. 고객 메일 주소 가리기 (전사 공개 화면이라 원문을 남기지 않는다)
+--    hong@cloudike.io → h***@c***. 저장하는 모든 경로(콘솔 입력 · 수정 · AI 번역 · 월간 요약)를
+--    트리거가 가리고, 아래 맨 끝에서 기존 기록도 한 번 가린다. 가린 값은 다시 걸리지 않아 여러 번 실행해도 안전.
+--    규칙은 supabase/functions/ai/lib.ts maskEmails 와 같다.
+-- ─────────────────────────────────────────────
+create or replace function public.mask_emails(t text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select pg_catalog.regexp_replace(t,
+    '([A-Za-z0-9])[A-Za-z0-9._%+-]*@([A-Za-z0-9])[A-Za-z0-9.-]*\.[A-Za-z]{2,}', '\1***@\2***', 'g')
+$$;
+
+create or replace function public.cs_tickets_mask()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  -- 가리면 길어질 수 있어(a@b.co 6자 → a***@b*** 9자) 칸 길이 제한에 맞춰 자른다
+  new.reporter        := left(public.mask_emails(new.reporter), 100);
+  new.customer        := left(public.mask_emails(new.customer), 200);
+  new.title           := left(public.mask_emails(new.title), 200);
+  new.version         := left(public.mask_emails(new.version), 100);
+  new.description     := left(public.mask_emails(new.description), 10000);
+  new.notes           := left(public.mask_emails(new.notes), 10000);
+  new.status_note     := left(public.mask_emails(new.status_note), 50);
+  new.assignee        := left(public.mask_emails(new.assignee), 100);
+  new.ticket_assignee := left(public.mask_emails(new.ticket_assignee), 100);
+  new.timeline := array(
+    select public.mask_emails(x) from unnest(new.timeline) with ordinality as u(x, i) order by i);
+  return new;
+end;
+$$;
+
+drop trigger if exists cs_tickets_mask on public.cs_tickets;
+create trigger cs_tickets_mask
+  before insert or update on public.cs_tickets
+  for each row execute function public.cs_tickets_mask();
+
+create or replace function public.cs_ticket_translations_mask()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.fields := public.mask_emails(new.fields::text)::jsonb;
+  return new;
+end;
+$$;
+
+drop trigger if exists cs_ticket_translations_mask on public.cs_ticket_translations;
+create trigger cs_ticket_translations_mask
+  before insert or update on public.cs_ticket_translations
+  for each row execute function public.cs_ticket_translations_mask();
+
+create or replace function public.cs_monthly_summaries_mask()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.content    := left(public.mask_emails(new.content), 20000);
+  new.content_en := left(public.mask_emails(new.content_en), 20000);
+  new.issues     := public.mask_emails(new.issues::text)::jsonb;
+  new.notes      := public.mask_emails(new.notes::text)::jsonb;
+  new.issues_en  := public.mask_emails(new.issues_en::text)::jsonb;
+  new.notes_en   := public.mask_emails(new.notes_en::text)::jsonb;
+  return new;
+end;
+$$;
+
+drop trigger if exists cs_monthly_summaries_mask on public.cs_monthly_summaries;
+create trigger cs_monthly_summaries_mask
+  before insert or update on public.cs_monthly_summaries
+  for each row execute function public.cs_monthly_summaries_mask();
+
+-- 기존 기록 한 번 가리기. 메일 주소가 있는 행만 건드리고(위 트리거가 가림),
+-- 이 작업이 누가 · 언제 고친 것으로 남지 않게 cs_tickets_stamp 는 잠시 끈다.
+alter table public.cs_tickets disable trigger cs_tickets_stamp;
+update public.cs_tickets set customer = customer
+  where concat_ws(' ', reporter, customer, title, version, description, notes, status_note,
+                  assignee, ticket_assignee, array_to_string(timeline, ' '))
+        ~ '[A-Za-z0-9]@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}';
+alter table public.cs_tickets enable trigger cs_tickets_stamp;
+
+update public.cs_ticket_translations set fields = fields
+  where fields::text ~ '[A-Za-z0-9]@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}';
+update public.cs_monthly_summaries set content = content
+  where concat_ws(' ', content, content_en, issues::text, notes::text, issues_en::text, notes_en::text)
+        ~ '[A-Za-z0-9]@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}';

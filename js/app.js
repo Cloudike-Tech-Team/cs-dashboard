@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261110-2';
+  const APP_VERSION = '20261110-3';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -42,7 +42,7 @@
     rows: [],                  // state.all 중 state.month 에 접수된 CS (월간 요약 · 막대용)
     view: 'open',              // 목록 보기: open(미해결 · 모든 달) | carry(이월) | all | done
     sort: 'urgent',            // 정렬: urgent | oldest | recent
-    scope: 'all',              // 검색 범위: all(전체 기간) | month(state.month 만)
+    listMonth: null,           // 목록 기간: null(전체 기간) | 'YYYY-MM'(그 달 접수만. 검색도 그 달 안에서)
     assignees: [],             // CS 담당 명단 (cs_assignees, 이름순)
     assigneesError: '',
     loading: false,
@@ -203,7 +203,6 @@
     $('month-label').textContent = month;
     deriveMonth();
     delete state.filters.issue;   // 이슈 번호는 달마다 다르다
-    renderScope();   // 검색 범위의 「YYYY-MM만」 이름도 바뀐 달로
     renderAll();
     loadSummary();
     loadTickets({ rows: state.rows });
@@ -290,9 +289,8 @@
     const p = JSON.parse(localStorage.getItem(LS_LIST) || '{}');
     if (VIEWS.includes(p.view)) state.view = p.view;
     if (SORTS.includes(p.sort)) state.sort = p.sort;
-    if (p.scope === 'month') state.scope = 'month';
   } catch { /* 무시 */ }
-  function saveListPrefs() { try { localStorage.setItem(LS_LIST, JSON.stringify({ view: state.view, sort: state.sort, scope: state.scope })); } catch { /* 무시 */ } }
+  function saveListPrefs() { try { localStorage.setItem(LS_LIST, JSON.stringify({ view: state.view, sort: state.sort })); } catch { /* 무시 */ } }
   function searchQuery() { return $('search-input').value.trim(); }
 
   // 지금 목록에 보이는 CS: 보기 → (검색 범위) → 필터 · 검색 → 정렬.
@@ -301,7 +299,7 @@
   // 필터 · 검색어를 걸기 전 목록 (보기 + 검색 범위). 상태 칩 · 필터 메뉴 건수도 이 기준
   function baseRows() {
     const rows = L.viewRows(state.all, listView(), currentMonthKST());
-    return state.scope === 'month' && searchQuery() ? rows.filter((r) => L.monthKST(r.received_at) === state.month) : rows;
+    return state.listMonth ? rows.filter((r) => L.monthKST(r.received_at) === state.listMonth) : rows;
   }
   // 검색어까지 건 목록 (필터 전). 상태 칩 · 필터 메뉴 건수의 기준
   function searchedRows() {
@@ -334,11 +332,27 @@
     $('sort-select').value = state.sort;
   }
   $('sort-select').addEventListener('change', () => { state.sort = $('sort-select').value; saveListPrefs(); renderList(); });
-  function renderScope() {
-    $('search-scope').replaceChildren(el('option', { value: 'all', text: t('scope.all') }), el('option', { value: 'month', text: t('scope.month', { month: state.month }) }));
-    $('search-scope').value = state.scope;
+  // 목록 기간: 「전체 기간」 또는 ‹ YYYY-MM › 로 한 달씩. 처음 ‹ 를 누르면 지난달(전달)
+  function renderPeriod() {
+    const cm = currentMonthKST();
+    const all = el('button', { type: 'button', class: 'period-all' + (state.listMonth ? '' : ' on'), 'aria-pressed': String(!state.listMonth), text: t('period.all') });
+    all.addEventListener('click', () => setListMonth(null));
+    const prev = el('button', { type: 'button', class: 'period-step', 'aria-label': t('aria.prevMonth'), title: t('aria.prevMonth'), text: '‹' });
+    prev.addEventListener('click', () => setListMonth(shiftMonth(state.listMonth || cm, -1)));
+    const label = el('button', { type: 'button', class: 'period-month mono' + (state.listMonth ? ' on' : ''), 'aria-pressed': String(!!state.listMonth), title: t('period.pickTitle'), text: state.listMonth || t('period.pick') });
+    label.addEventListener('click', () => setListMonth(state.listMonth ? null : cm));
+    const next = el('button', { type: 'button', class: 'period-step', 'aria-label': t('aria.nextMonth'), title: t('aria.nextMonth'), text: '›' });
+    next.addEventListener('click', () => setListMonth(shiftMonth(state.listMonth || shiftMonth(cm, -1), 1)));
+    $('period').replaceChildren(all, prev, label, next);
   }
-  $('search-scope').addEventListener('change', () => { state.scope = $('search-scope').value; saveListPrefs(); renderCards(); renderList(); });
+  // 목록 기간을 바꾸면 위 월간 리포트도 그 달로 맞춘다 (전체 기간으로 돌아가면 리포트는 그대로)
+  function setListMonth(m) {
+    state.listMonth = m;
+    if (m && m !== state.month) changeMonth(m);
+    else { renderCards(); renderList(); }
+    loadTickets({ rows: visibleRows().slice(0, 300) });
+  }
+
 
   // 검색 결과에 보이는 티켓만 트래커에서 읽는다 (입력이 멈춘 뒤)
   let searchTicketTimer;
@@ -425,7 +439,9 @@
           mm ? el('span', { class: 'row-tag warn', text: t(`mm.${mm}`), title: t(`mm.${mm}Title`) }) : null)),
       el('span', { class: 'col-status' }, statusPill(r)),
       // 담당이 없는 미해결은 눈에 띄게
-      el('span', { class: 'col-asg' + (r.assignee ? '' : r.status === 'done' ? ' none' : ' none warn'), text: r.assignee || t('common.unassigned'), title: L.assigneeLine(r, state.yt, state.lang) }),
+      el('span', { class: 'col-asg' + (r.assignee ? '' : r.status === 'done' ? ' none' : ' none warn'), title: L.assigneeLine(r, state.yt, state.lang) },
+        el('span', { class: 'avatar', 'aria-hidden': 'true', text: r.assignee ? r.assignee.trim().charAt(0).toUpperCase() : '?' }),
+        el('span', { class: 'asg-name', text: r.assignee || t('common.unassigned') })),
       ticketCell(r),
       el('span', { class: 'col-when', title: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` },
         el('span', { class: 'mono', text: when }), age),
@@ -485,6 +501,7 @@
   // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
   function renderList() {
     renderViewBar();
+    renderPeriod();
     const base = baseRows();
     const rows = visibleRows();
     const q = searchQuery();
@@ -494,8 +511,8 @@
         el('div', { class: 'hist-group', title: t('list.searchHint') }, el('strong', { text: L.recencyLabel(g.key, state.lang) }), el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
         ...g.rows.map((r) => rowNode(r)),
       ])
-      : ['open', 'all'].includes(state.view) ? monthGroups(rows) : rows.map((r) => rowNode(r))));
-    const view = q ? t('view.search') : t(`view.${state.view}`);
+      : ['open', 'all'].includes(state.view) && !state.listMonth ? monthGroups(rows) : rows.map((r) => rowNode(r))));
+    const view = (q ? t('view.search') : t(`view.${state.view}`)) + (state.listMonth ? ` · ${state.listMonth}` : '');
     $('list-title').textContent = rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length });
     renderFilterChips();
     const err = !!$('list-error').textContent;
@@ -574,7 +591,7 @@
       const b = el('button', { type: 'button', class: 'st-btn' + (r.status === k ? ' on' : ''), 'aria-pressed': String(r.status === k), text: L.statusName(k, state.lang) });
       b.style.setProperty('--c', L.STATUS[k].color);
       b.addEventListener('click', () => {
-        if (r.status === k) return;
+        if (r.status === k || state.busy) return;
         note.dataset.orig = note.value;   // 상태를 바꾸면 메모는 비워 저장되므로 쓰던 메모를 되살리지 않는다
         save({ status: k, status_note: '' }, stBox);
       });
@@ -584,7 +601,7 @@
     note.value = r.status_note;
     note.dataset.orig = r.status_note;
     note.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (note.value.trim() !== r.status_note) { note.dataset.orig = note.value; save({ status_note: note.value.trim() }, stBox); } }
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (!state.busy && note.value.trim() !== r.status_note) { note.dataset.orig = note.value; save({ status_note: note.value.trim() }, stBox); } }
     });
     stBox.append(stRow, note);
     nodes.push(stBox);
@@ -634,7 +651,7 @@
       if (e.key !== 'Enter' || e.isComposing) return;
       e.preventDefault();
       const entry = add.value.trim();
-      if (!entry) return;
+      if (!entry || state.busy) return;   // 다른 저장이 진행 중이면 글을 그대로 두고 기다린다
       add.dataset.orig = add.value;   // 저장되면 다시 그릴 때 이 글을 되살리지 않는다 (실패하면 칸이 그대로 남음)
       save({ timeline: [...r.timeline, L.datedEntry(entry)] }, histBox);
     });
@@ -1351,7 +1368,7 @@
     ]; })].map((cols) => cols.map(csvCell).join(','));
     // BOM 을 붙여야 엑셀에서 한글이 깨지지 않음
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${searchQuery() ? 'search' : state.view}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${searchQuery() ? 'search' : state.view}${state.listMonth ? `_${state.listMonth}` : ''}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
     document.body.append(a);
     a.click();
     a.remove();
@@ -1726,7 +1743,6 @@
         return b;
       }));
     });
-    renderScope();
     renderSortSelect();
     renderReportToggle();
     fillStaticSelects();

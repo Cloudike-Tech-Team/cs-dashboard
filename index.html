@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261110-2">
-  <link rel="stylesheet" href="css/style.css?v=20261110-2">
+  <meta name="app-version" content="20261110-3">
+  <link rel="stylesheet" href="css/style.css?v=20261110-3">
 </head>
 <body>
   <!-- 로그인 -->
@@ -27,30 +27,23 @@
   <section id="app-view" class="app" hidden>
     <header class="topbar">
       <div class="topbar-left">
-        <strong class="brand" data-i18n="app.title">CS 콘솔</strong>
-        <span class="vsep"></span>
+        <strong class="brand"><i aria-hidden="true"></i><span data-i18n="app.title">CS 콘솔</span></strong>
         <nav class="tabs"><a href="#" class="tab active" data-i18n="nav.tickets">접수 현황</a></nav>
       </div>
+      <label class="search">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓" data-i18n-placeholder="search.placeholder">
+        <kbd aria-hidden="true">/</kbd>
+      </label>
       <div class="topbar-right">
-        <span id="user-email" class="mono muted"></span>
+        <button id="new-btn" class="btn primary" type="button" data-i18n="btn.new">+ 새 CS</button>
+        <span id="user-email" class="who"></span>
         <span class="lang-switch" data-lang-switch></span>
         <button id="logout-btn" class="btn small" type="button" data-i18n="btn.logout">로그아웃</button>
       </div>
     </header>
 
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <label class="search">
-          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-          <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓" data-i18n-placeholder="search.placeholder">
-        </label>
-        <select id="search-scope" class="scope-select" aria-label="검색 범위" data-i18n-aria="scope.aria"></select>
-      </div>
-      <div class="toolbar-right">
-        <button id="new-btn" class="btn primary" type="button" data-i18n="btn.new">+ 새 CS</button>
-      </div>
-    </div>
-
+    <main class="main">
     <!-- 월간 리포트: 보고 있는 달의 요약 · 막대 (목록은 달과 상관없이 아래) -->
     <section id="report" class="report" aria-label="월간 리포트" data-i18n-aria="report.aria">
       <div class="report-head">
@@ -130,6 +123,7 @@
         </div>
         <div class="list-bar">
           <div id="view-tabs" class="seg" role="group" aria-label="보기" data-i18n-aria="view.aria"></div>
+          <div id="period" class="period" role="group" aria-label="기간" data-i18n-aria="period.aria"></div>
           <div id="filter-chips" class="filter-chips" aria-label="필터" data-i18n-aria="filter.aria"></div>
           <button id="filters-clear" class="link-btn" type="button" hidden data-i18n="filter.clearAll">필터 모두 지우기</button>
           <span class="list-bar-right">
@@ -159,6 +153,7 @@
         <div id="detail-body" class="detail-body"></div>
       </aside>
     </div>
+    </main>
   </section>
 
   <!-- 등록/수정 모달 -->
@@ -252,9 +247,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261110-2"></script>
-  <script src="js/i18n.js?v=20261110-2"></script>
-  <script src="js/lib.js?v=20261110-2"></script>
-  <script src="js/app.js?v=20261110-2"></script>
+  <script src="js/config.js?v=20261110-3"></script>
+  <script src="js/i18n.js?v=20261110-3"></script>
+  <script src="js/lib.js?v=20261110-3"></script>
+  <script src="js/app.js?v=20261110-3"></script>
 </body>
 </html>

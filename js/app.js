@@ -294,9 +294,11 @@
   function saveListPrefs() { try { localStorage.setItem(LS_LIST, JSON.stringify({ view: state.view, sort: state.sort, scope: state.scope })); } catch { /* 무시 */ } }
   function searchQuery() { return $('search-input').value.trim(); }
 
-  // 지금 목록에 보이는 CS: 보기 → (검색 범위) → 필터 · 검색 → 정렬
+  // 지금 목록에 보이는 CS: 보기 → (검색 범위) → 필터 · 검색 → 정렬.
+  // 검색어가 있으면 보기와 상관없이 모든 CS(완료 포함)에서 찾는다
+  function listView() { return searchQuery() ? 'all' : state.view; }
   function visibleRows() {
-    let rows = L.viewRows(state.all, state.view, currentMonthKST());
+    let rows = L.viewRows(state.all, listView(), currentMonthKST());
     if (state.scope === 'month' && searchQuery()) rows = rows.filter((r) => L.monthKST(r.received_at) === state.month);
     return L.sortRows(filteredRows(rows), state.sort, state.yt);
   }
@@ -461,16 +463,17 @@
   // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
   function renderList() {
     renderViewBar();
-    const base = L.viewRows(state.all, state.view, currentMonthKST());
+    const base = L.viewRows(state.all, listView(), currentMonthKST());
     const rows = visibleRows();
     const q = searchQuery();
+    $('view-tabs').classList.toggle('searching', !!q);
     $('cs-list').replaceChildren(...(q
       ? L.groupByRecency(rows).flatMap((g) => [
         el('div', { class: 'hist-group', title: t('list.searchHint') }, el('strong', { text: L.recencyLabel(g.key, state.lang) }), el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
         ...g.rows.map((r) => rowNode(r)),
       ])
       : rows.map((r) => rowNode(r))));
-    const view = t(`view.${state.view}`);
+    const view = q ? t('view.search') : t(`view.${state.view}`);
     $('list-title').textContent = rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length });
     renderFilterChips();
     const err = !!$('list-error').textContent;

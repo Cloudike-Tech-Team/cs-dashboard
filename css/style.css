@@ -448,3 +448,4 @@ html[lang="en"] .popup-body .meta { grid-template-columns: 88px minmax(0, 1fr); 
 
 @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .cards, .strip { padding-left: 16px; padding-right: 16px; } .list-bar-right { margin-left: 0; } }
+.seg.searching button.on { background: var(--selected); color: var(--text-2); }

@@ -455,3 +455,23 @@ html[lang="en"] .popup-body .meta { grid-template-columns: 88px minmax(0, 1fr); 
 .month-group.this { background: #FFFFFF; border-top: 0; }
 .month-group.this strong { font-size: 13px; }
 .group-empty { margin: 0; padding: 14px 20px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line-2); }
+
+/* 월간 리포트: 맨 위 띠 (왼쪽 사이드바를 옮김). 접으면 머리 한 줄만 */
+.report { border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.report-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 24px; }
+.report .side-month { padding: 0; border: 0; gap: 4px; }
+.report-title { font-size: 14px; font-weight: 700; margin-left: 6px; }
+.report-toggle { margin-left: auto; font-size: 13px; }
+.report-body { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); gap: 0 8px; padding: 0 12px 10px; }
+.report-col { min-width: 0; }
+.report-col .side-title { padding: 6px 12px 4px; }
+.report-col .issue-btn { padding: 6px 12px; }
+.report-col .device-list { padding: 0 4px 4px; }
+.report-col .device-btn { grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) 24px; padding: 5px 8px; }
+.report-wide { grid-column: 1 / -1; }
+.report .notes-box > summary { border-top: 1px solid var(--line); margin-top: 6px; padding: 10px 12px 4px; }
+.report .notes-list { padding: 0 12px 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 24px; }
+.report .backfill-box { border-top: 1px solid var(--line); margin-top: 6px; padding-bottom: 6px; }
+.report .side-pad { padding: 0 24px; }
+@media (max-width: 1100px) { .report-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .report-head { padding: 10px 16px; } .report-body { grid-template-columns: minmax(0, 1fr); } }

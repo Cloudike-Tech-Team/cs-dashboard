@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261110-1';
+  const APP_VERSION = '20261110-2';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -821,6 +821,8 @@
     $('summary-gen-btn').textContent = s ? t('btn.regenerate') : t('btn.generate');
     $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
     $('filter-clear').hidden = !Object.values(state.filters).some((v) => v && v.length);
+    const mk = L.kpi(state.rows);
+    $('report-count').textContent = t('report.count', { n: mk.total, open: mk.open });
 
     // 주요 이슈
     const issueBox = $('issue-list');
@@ -900,6 +902,22 @@
       : [el('p', { class: 'muted', text: s ? t('common.none') : '—' })]));
   }
   $('filter-clear').addEventListener('click', () => { state.filters = {}; filtersChanged(); });
+
+  // ───────────── 월간 리포트 접기 ─────────────
+  const LS_REPORT = 'cs.reportOpen';
+  let reportOpen = true;
+  try { reportOpen = localStorage.getItem(LS_REPORT) !== '0'; } catch { /* 무시 */ }
+  function renderReportToggle() {
+    $('report-body').hidden = !reportOpen;
+    $('report').classList.toggle('folded', !reportOpen);
+    $('report-toggle').setAttribute('aria-expanded', String(reportOpen));
+    $('report-toggle').textContent = reportOpen ? t('report.fold') : t('report.unfold');
+  }
+  $('report-toggle').addEventListener('click', () => {
+    reportOpen = !reportOpen;
+    try { localStorage.setItem(LS_REPORT, reportOpen ? '1' : '0'); } catch { /* 무시 */ }
+    renderReportToggle();
+  });
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, -1)));
@@ -1710,6 +1728,7 @@
     });
     renderScope();
     renderSortSelect();
+    renderReportToggle();
     fillStaticSelects();
   }
   function setLang(lang) {

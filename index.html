@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261110-1">
-  <link rel="stylesheet" href="css/style.css?v=20261110-1">
+  <meta name="app-version" content="20261110-2">
+  <link rel="stylesheet" href="css/style.css?v=20261110-2">
 </head>
 <body>
   <!-- 로그인 -->
@@ -51,6 +51,59 @@
       </div>
     </div>
 
+    <!-- 월간 리포트: 보고 있는 달의 요약 · 막대 (목록은 달과 상관없이 아래) -->
+    <section id="report" class="report" aria-label="월간 리포트" data-i18n-aria="report.aria">
+      <div class="report-head">
+        <div class="side-month" aria-label="요약 · 막대를 볼 달" data-i18n-aria="side.monthAria">
+          <button id="prev-month" class="btn icon xs" type="button" aria-label="이전 달" data-i18n-aria="aria.prevMonth">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <span id="month-label" class="month-label mono"></span>
+          <button id="next-month" class="btn icon xs" type="button" aria-label="다음 달" data-i18n-aria="aria.nextMonth">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button id="this-month" class="btn xs" type="button" data-i18n="btn.thisMonth">이번 달</button>
+        </div>
+        <strong class="report-title" data-i18n="report.title">월간 리포트</strong>
+        <span id="report-count" class="muted small"></span>
+        <span id="summary-meta" class="muted small"></span>
+        <span class="panel-head-actions">
+          <button id="summary-copy-btn" class="btn xs" type="button" hidden data-i18n="btn.copy">복사</button>
+          <button id="summary-gen-btn" class="btn xs" type="button">생성</button>
+        </span>
+        <button id="filter-clear" class="link-btn" type="button" hidden data-i18n="btn.filterClear">필터 해제 ×</button>
+        <button id="report-toggle" class="link-btn report-toggle" type="button" aria-expanded="true" aria-controls="report-body"></button>
+      </div>
+      <p id="summary-error" class="error side-pad" hidden></p>
+      <div id="report-body" class="report-body">
+        <div class="report-col">
+          <div class="side-title"><h3 data-i18n="side.issues">주요 이슈 · 눌러서 필터</h3></div>
+          <div id="issue-list" class="issue-list"></div>
+        </div>
+        <div class="report-col">
+          <div class="side-title"><h3 data-i18n="side.severity">심각도별 · 눌러서 필터</h3></div>
+          <div id="severity-list" class="device-list"></div>
+        </div>
+        <div class="report-col">
+          <div class="side-title"><h3 data-i18n="side.device">기기별 · 눌러서 필터</h3></div>
+          <div id="device-list" class="device-list"></div>
+        </div>
+        <div class="report-col">
+          <div class="side-title"><h3 data-i18n="side.assignee">담당자별 · 눌러서 필터</h3><button id="asg-manage-btn" class="link-btn" type="button" data-i18n="btn.asgManage">CS 담당 관리</button></div>
+          <div id="assignee-list" class="device-list"></div>
+        </div>
+        <details class="notes-box report-wide">
+          <summary class="side-title bordered"><h3><span data-i18n="side.notes">특이사항</span> <b id="notes-count" class="mono"></b></h3></summary>
+          <div id="notes-list" class="notes-list"></div>
+        </details>
+        <!-- 기존 기록 번역: 번역이 없는 CS 가 있을 때만 보인다 -->
+        <div id="backfill-box" class="backfill-box report-wide" hidden>
+          <div class="side-title"><h3 data-i18n="bf.title">기존 기록 번역</h3></div>
+          <p class="backfill-row"><span id="backfill-status" class="muted small"></span><button id="backfill-btn" class="btn xs" type="button" data-i18n="bf.start">번역 시작</button></p>
+        </div>
+      </div>
+    </section>
+
     <div class="cards" aria-label="해야 할 일" data-i18n-aria="card.aria">
       <button class="card" type="button" data-card="open"><span class="card-label" data-i18n="card.open">미해결</span><span id="card-open" class="card-value">0</span><span id="card-open-sub" class="card-sub"></span></button>
       <button class="card urgent" type="button" data-card="urgent"><span class="card-label" data-i18n="card.urgent">긴급 · 핫픽스·크리티컬</span><span id="card-urgent" class="card-value">0</span><span class="card-sub" data-i18n="card.urgentSub">미해결 기준</span></button>
@@ -68,56 +121,6 @@
     </div>
 
     <div class="body">
-      <!-- 요약 · 필터 -->
-      <aside class="side" aria-label="월간 요약" data-i18n-aria="side.summary">
-        <div class="side-month" aria-label="요약 · 막대를 볼 달" data-i18n-aria="side.monthAria">
-          <button id="prev-month" class="btn icon xs" type="button" aria-label="이전 달" data-i18n-aria="aria.prevMonth">
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
-          </button>
-          <span id="month-label" class="month-label mono"></span>
-          <button id="next-month" class="btn icon xs" type="button" aria-label="다음 달" data-i18n-aria="aria.nextMonth">
-            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-          </button>
-          <button id="this-month" class="btn xs" type="button" data-i18n="btn.thisMonth">이번 달</button>
-        </div>
-        <div class="panel-head">
-          <div class="panel-head-text">
-            <strong data-i18n="side.summary">월간 요약</strong>
-            <span id="summary-meta" class="mono muted small"></span>
-          </div>
-          <div class="panel-head-actions">
-            <button id="summary-copy-btn" class="btn xs" type="button" hidden data-i18n="btn.copy">복사</button>
-            <button id="summary-gen-btn" class="btn xs" type="button">생성</button>
-          </div>
-        </div>
-        <p id="summary-error" class="error side-pad" hidden></p>
-
-        <div class="side-title">
-          <h3 data-i18n="side.issues">주요 이슈 · 눌러서 필터</h3>
-          <button id="filter-clear" class="link-btn" type="button" hidden data-i18n="btn.filterClear">필터 해제 ×</button>
-        </div>
-        <div id="issue-list" class="issue-list"></div>
-
-        <div class="side-title"><h3 data-i18n="side.severity">심각도별 · 눌러서 필터</h3></div>
-        <div id="severity-list" class="device-list"></div>
-
-        <div class="side-title"><h3 data-i18n="side.device">기기별 · 눌러서 필터</h3></div>
-        <div id="device-list" class="device-list"></div>
-
-        <div class="side-title"><h3 data-i18n="side.assignee">담당자별 · 눌러서 필터</h3><button id="asg-manage-btn" class="link-btn" type="button" data-i18n="btn.asgManage">CS 담당 관리</button></div>
-        <div id="assignee-list" class="device-list"></div>
-
-        <details class="notes-box">
-          <summary class="side-title bordered"><h3><span data-i18n="side.notes">특이사항</span> <b id="notes-count" class="mono"></b></h3></summary>
-          <div id="notes-list" class="notes-list"></div>
-        </details>
-
-        <!-- 기존 기록 번역: 번역이 없는 CS 가 있을 때만 보인다 -->
-        <div id="backfill-box" class="backfill-box" hidden>
-          <div class="side-title"><h3 data-i18n="bf.title">기존 기록 번역</h3></div>
-          <p class="backfill-row"><span id="backfill-status" class="muted small"></span><button id="backfill-btn" class="btn xs" type="button" data-i18n="bf.start">번역 시작</button></p>
-        </div>
-      </aside>
 
       <!-- 목록 -->
       <section class="list" aria-label="CS 목록" data-i18n-aria="list.aria">
@@ -249,9 +252,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261110-1"></script>
-  <script src="js/i18n.js?v=20261110-1"></script>
-  <script src="js/lib.js?v=20261110-1"></script>
-  <script src="js/app.js?v=20261110-1"></script>
+  <script src="js/config.js?v=20261110-2"></script>
+  <script src="js/i18n.js?v=20261110-2"></script>
+  <script src="js/lib.js?v=20261110-2"></script>
+  <script src="js/app.js?v=20261110-2"></script>
 </body>
 </html>

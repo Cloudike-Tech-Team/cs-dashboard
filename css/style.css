@@ -449,3 +449,6 @@ html[lang="en"] .popup-body .meta { grid-template-columns: 88px minmax(0, 1fr); 
 @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .cards, .strip { padding-left: 16px; padding-right: 16px; } .list-bar-right { margin-left: 0; } }
 .seg.searching button.on { background: var(--selected); color: var(--text-2); }
+.seg.searching button.on b { color: var(--muted); }
+#paste-notes { margin: 8px 0 0; padding: 6px 10px; font-size: 13px; color: #92400E; background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 4px; }
+#paste-notes.error { color: var(--danger); background: #FEF2F2; border-color: #FCA5A5; }

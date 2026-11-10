@@ -48,7 +48,8 @@
     loading: false,
     editing: null,             // 수정 중인 원본 row (신규면 null)
     busy: false,               // 저장/삭제/빠른 조작 요청 진행 중
-    loadSeq: 0,                // 빠른 월 이동 시 늦게 도착한 응답 무시용
+    loadSeq: 0,                // 늦게 도착한 전체 목록 응답 무시용
+    summarySeq: 0,             // 빠른 월 이동 시 늦게 도착한 월간 요약 응답 무시용 (목록 순번과 따로)
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
     summaryBusyMonth: null,    // 생성 중인 월 ('YYYY-MM'). 다른 달을 보고 있으면 "생성 중" 을 표시하지 않음
@@ -188,7 +189,7 @@
     deriveMonth();
     state.selected = opts.selected && state.all.some((r) => r.id === opts.selected) ? opts.selected : null;
     renderAll();
-    loadSummary(seq);
+    loadSummary();
     loadTickets({ refresh: true });
     // 화면 언어 번역은 안 끝난 CS · 보고 있는 달 것만 요청한다 (나머지는 있는 번역만 읽음)
     loadTranslations(state.all, { request: false }).then(() => requestTranslations(workingRows()));
@@ -202,9 +203,9 @@
     $('month-label').textContent = month;
     deriveMonth();
     delete state.filters.issue;   // 이슈 번호는 달마다 다르다
-    if (state.scope === 'month') renderScope();
+    renderScope();   // 검색 범위의 「YYYY-MM만」 이름도 바뀐 달로
     renderAll();
-    loadSummary(++state.loadSeq);
+    loadSummary();
     loadTickets({ rows: state.rows });
   }
 
@@ -297,10 +298,18 @@
   // 지금 목록에 보이는 CS: 보기 → (검색 범위) → 필터 · 검색 → 정렬.
   // 검색어가 있으면 보기와 상관없이 모든 CS(완료 포함)에서 찾는다
   function listView() { return searchQuery() ? 'all' : state.view; }
+  // 필터 · 검색어를 걸기 전 목록 (보기 + 검색 범위). 상태 칩 · 필터 메뉴 건수도 이 기준
+  function baseRows() {
+    const rows = L.viewRows(state.all, listView(), currentMonthKST());
+    return state.scope === 'month' && searchQuery() ? rows.filter((r) => L.monthKST(r.received_at) === state.month) : rows;
+  }
+  // 검색어까지 건 목록 (필터 전). 상태 칩 · 필터 메뉴 건수의 기준
+  function searchedRows() {
+    const q = searchQuery();
+    return q ? baseRows().filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r))) : baseRows();
+  }
   function visibleRows() {
-    let rows = L.viewRows(state.all, listView(), currentMonthKST());
-    if (state.scope === 'month' && searchQuery()) rows = rows.filter((r) => L.monthKST(r.received_at) === state.month);
-    return L.sortRows(filteredRows(rows), state.sort, state.yt);
+    return L.sortRows(filteredRows(baseRows()), state.sort, state.yt);
   }
 
   function renderViewBar() {
@@ -463,7 +472,7 @@
   // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
   function renderList() {
     renderViewBar();
-    const base = L.viewRows(state.all, listView(), currentMonthKST());
+    const base = baseRows();
     const rows = visibleRows();
     const q = searchQuery();
     $('view-tabs').classList.toggle('searching', !!q);
@@ -551,14 +560,18 @@
     const stRow = el('div', { class: 'st-buttons', role: 'group', 'aria-label': t('d.statusAria') }, ...Object.keys(L.STATUS).map((k) => {
       const b = el('button', { type: 'button', class: 'st-btn' + (r.status === k ? ' on' : ''), 'aria-pressed': String(r.status === k), text: L.statusName(k, state.lang) });
       b.style.setProperty('--c', L.STATUS[k].color);
-      b.addEventListener('click', () => { if (r.status !== k) save({ status: k, status_note: '' }, stBox); });
+      b.addEventListener('click', () => {
+        if (r.status === k) return;
+        note.dataset.orig = note.value;   // 상태를 바꾸면 메모는 비워 저장되므로 쓰던 메모를 되살리지 않는다
+        save({ status: k, status_note: '' }, stBox);
+      });
       return b;
     }));
     const note = el('input', { type: 'text', maxlength: '50', placeholder: t('d.notePh'), 'data-keep': 'note', 'data-row-id': r.id, 'aria-label': t('f.statusNote') });
     note.value = r.status_note;
     note.dataset.orig = r.status_note;
     note.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (note.value.trim() !== r.status_note) save({ status_note: note.value.trim() }, stBox); }
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (note.value.trim() !== r.status_note) { note.dataset.orig = note.value; save({ status_note: note.value.trim() }, stBox); } }
     });
     stBox.append(stRow, note);
     nodes.push(stBox);
@@ -609,6 +622,7 @@
       e.preventDefault();
       const entry = add.value.trim();
       if (!entry) return;
+      add.dataset.orig = add.value;   // 저장되면 다시 그릴 때 이 글을 되살리지 않는다 (실패하면 칸이 그대로 남음)
       save({ timeline: [...r.timeline, L.datedEntry(entry)] }, histBox);
     });
     nodes.push(histBox, err);
@@ -693,7 +707,7 @@
     });
 
     // 상태별 칩: 지금 보기(미해결 · 이월 · …)의 상태별 건수. 누르면 그 상태만, 다시 누르면 해제
-    const base = L.viewRows(state.all, state.view, cm);
+    const base = searchedRows();
     const counts = Object.keys(L.STATUS).map((k) => [k, base.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === k).length]).filter(([, n]) => n > 0);
     $('status-chips').replaceChildren(...counts.map(([k, n]) => {
       const on = isActive('status', k);
@@ -757,7 +771,7 @@
   function filterMenu(type) {
     // 건수는 지금 보기 + 다른 종류의 필터를 건 상태 기준 (이 종류를 고르면 몇 건이 남는지)
     const others = { ...state.filters, [type]: [] };
-    const base = L.applyFilters(L.viewRows(state.all, state.view, currentMonthKST()), others, summaryView().issues, state.yt);
+    const base = L.applyFilters(searchedRows(), others, summaryView().issues, state.yt);
     const opts = L.filterOptions(base, type, summaryView().issues, state.yt).filter(([v, n]) => n > 0 || isActive(type, v));
     const menu = el('div', { class: 'fmenu', role: 'menu' });
     menu.addEventListener('click', (e) => e.stopPropagation());
@@ -879,13 +893,13 @@
   $('next-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, 1)));
   $('this-month').addEventListener('click', () => changeMonth(currentMonthKST()));
   $('search-input').addEventListener('input', () => { renderCards(); renderList(); loadSearchTickets(); });
-  // 단축키: / 로 검색, Esc 로 열린 빠른 폼 → 상세 순서로 닫기 (입력 중이거나 창이 열려 있으면 그대로)
+  // 단축키: / 로 검색, Esc 로 열린 필터 메뉴 → 상세 순서로 닫기 (입력 중이거나 창이 열려 있으면 그대로)
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented || document.querySelector('dialog[open]')) return;
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if (e.key === '/' && !typing && !$('app-view').hidden) { e.preventDefault(); $('search-input').focus(); return; }
     if (e.key !== 'Escape') return;
-    if (e.target === $('search-input') && searchQuery()) return;   // 검색칸 Esc 는 브라우저가 검색어를 지움
+    if (typing) return;   // 입력칸의 Esc 는 그 칸에 맡긴다 (쓰던 글을 잃지 않게. 검색칸은 브라우저가 검색어를 지움)
     if (openMenu) { openMenu = null; renderFilterChips(); return; }
     if (state.selected) { e.preventDefault(); closeDetail(); }
   });
@@ -1047,6 +1061,10 @@
     ['save-btn', 'delete-btn', 'delete-yes', 'delete-no'].forEach((id) => { $(id).disabled = on; });
     dialog.querySelectorAll('[data-close]').forEach((b) => { b.disabled = on; });
   }
+
+  // 빈 필수 칸 표시는 채우는 즉시 지운다
+  form.addEventListener('input', (e) => { if (e.target.hasAttribute && e.target.hasAttribute('aria-invalid')) e.target.removeAttribute('aria-invalid'); });
+  form.addEventListener('change', (e) => { if (e.target.hasAttribute && e.target.hasAttribute('aria-invalid')) e.target.removeAttribute('aria-invalid'); });
 
   // 한 줄 입력칸에서 Enter 를 눌러도 저장되지 않게. 리스트 항목에서는 새 항목 추가.
   form.addEventListener('keydown', (e) => {
@@ -1210,6 +1228,7 @@
     if (!p.device) hints.push(t('paste.hNoDevice'));
     if (!p.title) hints.push(t('paste.hNoTitle'));
     if (p.confidence_notes) hints.push(p.confidence_notes);
+    $('paste-notes').classList.remove('error');
     showError($('paste-notes'), hints.length ? t('paste.review', { list: hints.join(' / ') }) : '');
   }
   $('paste-btn').addEventListener('click', async () => {
@@ -1223,10 +1242,11 @@
       const { parsed } = await callAi({ mode: 'parse', text });
       applyParsed(parsed);
       $('paste-status').textContent = t('paste.done');
-      $('paste-box').open = false;
-      form.elements.description.focus();
+      // 붙여넣기 칸은 펼친 채로 둔다 (아래 「검토 필요」 안내가 함께 보이게)
+      form.elements.title.focus();
     } catch (e) {
       $('paste-status').textContent = '';
+      $('paste-notes').classList.add('error');
       showError($('paste-notes'), t('paste.failed', { e: e.message }));
     } finally {
       btn.disabled = false;
@@ -1234,12 +1254,13 @@
   });
 
   // ── 월간 요약
-  async function loadSummary(seq) {
+  async function loadSummary() {
+    const seq = ++state.summarySeq;
     state.summary = null;
     renderSidebar();
     const { data, error } = await sb
       .from('cs_monthly_summaries').select('*').eq('month', state.month).maybeSingle();
-    if (seq !== state.loadSeq) return;
+    if (seq !== state.summarySeq) return;
     if (error) { showError($('summary-error'), t('sum.loadFailed', { e: error.message })); return; }
     showError($('summary-error'), '');
     state.summary = data;
@@ -1299,7 +1320,7 @@
     ]; })].map((cols) => cols.map(csvCell).join(','));
     // BOM 을 붙여야 엑셀에서 한글이 깨지지 않음
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${state.view}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${searchQuery() ? 'search' : state.view}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
     document.body.append(a);
     a.click();
     a.remove();

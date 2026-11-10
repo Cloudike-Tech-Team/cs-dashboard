@@ -456,7 +456,7 @@
       "list.searchHint": "Search results are grouped by when they were received",
       "age.today": "Today",
       "age.days": "Day {n}",
-      "age.overdue": "Overdue · day {n}",
+      "age.overdue": "Late · {n}d",
       "age.title": "{n} days since received · shown as overdue after {d} days",
       "tag.carry": "Carried over",
       "tag.carryTitle": "Received before this month and not done yet",

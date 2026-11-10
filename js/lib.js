@@ -90,6 +90,13 @@
     if (view === 'carry') return rows.filter((r) => isCarried(r, nowMonth));
     return rows.filter((r) => r.status !== 'done');
   }
+  // 접수 월(KST)별 묶음. 이번 달은 비어 있어도 맨 위, 나머지는 최근 달부터. 묶음 안 순서는 그대로
+  function groupByMonth(rows, nowMonth) {
+    const by = new Map([[nowMonth, []]]);
+    rows.forEach((r) => { const ym = monthKST(r.received_at); if (!by.has(ym)) by.set(ym, []); by.get(ym).push(r); });
+    const rest = [...by.keys()].filter((ym) => ym !== nowMonth).sort().reverse();
+    return [nowMonth, ...rest].map((ym) => ({ ym, rows: by.get(ym) }));
+  }
   // 목록을 이번 달(KST) 접수와 그 전 접수로 나눈다. 순서는 그대로
   function splitByMonth(rows, nowMonth) {
     const current = [], before = [];
@@ -363,7 +370,7 @@
   }
 
   return {
-    popupPlace, popupBig, applyFilters, actionCounts, splitByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
+    popupPlace, popupBig, applyFilters, actionCounts, splitByMonth, groupByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

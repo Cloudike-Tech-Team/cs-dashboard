@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261110-3';
+  const APP_VERSION = '20261110-4';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -486,16 +486,17 @@
     return n;
   }
 
-  // 미해결 · 전체 보기: 이번 달 접수를 먼저(없으면 「이번 달 접수 없음」), 그 아래 지난달 이전 접수
+  // 미해결 · 전체 보기: 접수 월별로 묶는다. 이번 달은 비어 있어도 맨 위(「이번 달에 접수된 CS가 없습니다」), 그 아래 지난달부터
   function monthGroups(rows) {
     const cm = currentMonthKST();
-    const { current, before } = L.splitByMonth(rows, cm);
-    const head = (label, n, cls) => el('div', { class: 'hist-group month-group' + (cls ? ' ' + cls : '') }, el('strong', { text: label }), el('span', { class: 'mono', text: t('nCount', { n }) }));
-    return [
-      head(t('grp.thisMonth', { month: I.monthCount(state.lang, cm, true, '').trim() }), current.length, 'this'),
-      ...(current.length ? current.map((r) => rowNode(r)) : [el('p', { class: 'group-empty', text: t('grp.empty') })]),
-      ...(before.length ? [head(t('grp.before'), before.length), ...before.map((r) => rowNode(r, true))] : []),
-    ];
+    const year = cm.slice(0, 4);
+    const name = (ym) => I.monthCount(state.lang, ym, ym.slice(0, 4) === year, '').trim();
+    return L.groupByMonth(rows, cm).flatMap((g) => [
+      el('div', { class: 'hist-group month-group' + (g.ym === cm ? ' this' : '') },
+        el('strong', { text: g.ym === cm ? t('grp.thisMonth', { month: name(g.ym) }) : t('grp.month', { month: name(g.ym) }) }),
+        el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
+      ...(g.rows.length ? g.rows.map((r) => rowNode(r, g.ym !== cm)) : [el('p', { class: 'group-empty', text: t('grp.empty') })]),
+    ]);
   }
 
   // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
@@ -838,6 +839,9 @@
     $('summary-gen-btn').textContent = s ? t('btn.regenerate') : t('btn.generate');
     $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
     $('filter-clear').hidden = !Object.values(state.filters).some((v) => v && v.length);
+    const view0 = summaryView();
+    $('summary-text').hidden = !view0.content;
+    $('summary-text').textContent = view0.content || '';
     const mk = L.kpi(state.rows);
     $('report-count').textContent = t('report.count', { n: mk.total, open: mk.open });
 
@@ -854,7 +858,7 @@
         el('b', { text: String(is.count) }));
       b.style.setProperty('--c', L.ISSUE_COLORS[i % L.ISSUE_COLORS.length]);
       b.disabled = is.count === 0;
-      b.addEventListener('click', () => toggleFilter('issue', i));
+      b.addEventListener('click', () => filterFromReport('issue', i));
       return b;
     }));
 
@@ -870,7 +874,7 @@
         el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
         el('b', { text: String(n) }));
       b.disabled = n === 0 && !isActive('severity', k);
-      b.addEventListener('click', () => toggleFilter('severity', k));
+      b.addEventListener('click', () => filterFromReport('severity', k));
       return b;
     }));
 
@@ -886,7 +890,7 @@
         el('span', { class: 'lbl', text: L.deviceLabel(d, state.lang) }),
         el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
         el('b', { text: String(n) }));
-      b.addEventListener('click', () => toggleFilter('device', d));
+      b.addEventListener('click', () => filterFromReport('device', d));
       return b;
     }));
 
@@ -906,7 +910,7 @@
         el('span', { class: 'lbl' + (a ? '' : ' muted'), text: a || t('common.unassigned') }),
         el('span', { class: 'bar', 'aria-hidden': 'true' }, fill),
         el('b', { text: String(n) }));
-      b.addEventListener('click', () => toggleFilter('assignee', a));
+      b.addEventListener('click', () => filterFromReport('assignee', a));
       return b;
     }));
 
@@ -920,21 +924,32 @@
   }
   $('filter-clear').addEventListener('click', () => { state.filters = {}; filtersChanged(); });
 
-  // ───────────── 월간 리포트 접기 ─────────────
-  const LS_REPORT = 'cs.reportOpen';
-  let reportOpen = true;
-  try { reportOpen = localStorage.getItem(LS_REPORT) !== '0'; } catch { /* 무시 */ }
-  function renderReportToggle() {
-    $('report-body').hidden = !reportOpen;
-    $('report').classList.toggle('folded', !reportOpen);
-    $('report-toggle').setAttribute('aria-expanded', String(reportOpen));
-    $('report-toggle').textContent = reportOpen ? t('report.fold') : t('report.unfold');
+  // ───────────── 페이지: 접수 현황 / 월간 리포트 (#report 로 새로고침해도 유지) ─────────────
+  let page = location.hash === '#report' ? 'report' : 'list';
+  function showPage(p) {
+    page = p;
+    $('page-list').hidden = p !== 'list';
+    $('page-report').hidden = p !== 'report';
+    document.querySelectorAll('.tabs .tab').forEach((b) => {
+      const on = b.dataset.page === p;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    try { history.replaceState(null, '', p === 'report' ? '#report' : location.pathname + location.search); } catch { /* 무시 */ }
+    if (p === 'list' && state.selected) renderDetail();
   }
-  $('report-toggle').addEventListener('click', () => {
-    reportOpen = !reportOpen;
-    try { localStorage.setItem(LS_REPORT, reportOpen ? '1' : '0'); } catch { /* 무시 */ }
-    renderReportToggle();
-  });
+  document.querySelectorAll('.tabs .tab').forEach((b) => b.addEventListener('click', () => showPage(b.dataset.page)));
+  // 리포트에서 이슈 · 막대를 누르면: 접수 현황으로 가서 그 달 접수(완료 포함)를 그 조건으로 걸러 본다
+  function filterFromReport(type, value) {
+    state.view = 'all';
+    state.listMonth = state.month;
+    state.filters = { [type]: [value] };
+    saveListPrefs();
+    showPage('list');
+    filtersChanged();
+    loadTickets({ rows: visibleRows().slice(0, 300) });
+  }
+  $('report-csv').addEventListener('click', () => exportCsv(state.rows, `CS_${state.month}.csv`));
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, -1)));
@@ -951,7 +966,7 @@
     if (openMenu) { openMenu = null; renderFilterChips(); return; }
     if (state.selected) { e.preventDefault(); closeDetail(); }
   });
-  $('export-btn').addEventListener('click', exportCsv);
+  $('export-btn').addEventListener('click', () => exportCsv());
   $('new-btn').addEventListener('click', () => openDialog(null));
 
   // ───────────── 등록/수정 폼 ─────────────
@@ -1350,10 +1365,9 @@
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // 엑셀 수식 인젝션 방지
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
-  function exportCsv() {
+  function exportCsv(rows = visibleRows(), fileName = null) {
     if (state.loading) return;
     if ($('list-error').textContent) { toast(t('csv.noList')); return; }
-    const rows = visibleRows();
     if (!rows.length) { toast(t('csv.empty')); return; }
     const header = [t('csv.received'), t('csv.reporter'), t('csv.customer'), t('csv.device'), t('csv.version'), t('csv.title'), t('csv.severity'),
       t('csv.csStatus'), t('csv.csOwner'), t('csv.ticketOwner'), t('csv.ticketStatus'), t('csv.desc'), t('csv.notes'), t('csv.timeline'),
@@ -1368,7 +1382,7 @@
     ]; })].map((cols) => cols.map(csvCell).join(','));
     // BOM 을 붙여야 엑셀에서 한글이 깨지지 않음
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${searchQuery() ? 'search' : state.view}${state.listMonth ? `_${state.listMonth}` : ''}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
+    const a = el('a', { href: URL.createObjectURL(blob), download: fileName || `CS_${searchQuery() ? 'search' : state.view}${state.listMonth ? `_${state.listMonth}` : ''}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
     document.body.append(a);
     a.click();
     a.remove();
@@ -1744,7 +1758,7 @@
       }));
     });
     renderSortSelect();
-    renderReportToggle();
+    showPage(page);
     fillStaticSelects();
   }
   function setLang(lang) {

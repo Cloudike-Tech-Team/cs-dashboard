@@ -480,3 +480,10 @@ test('splitByMonth: 이번 달(KST) 접수와 그 전 접수로 나눈다 (순�
   const s = L.splitByMonth(rows, '2026-11');
   assert.deepEqual([ids(s.current), ids(s.before)], [['a', 'c'], ['b']]);   // a 는 KST 11-01
 });
+
+test('groupByMonth: 이번 달을 맨 위(비어도), 나머지는 최근 달부터, 묶음 안 순서 유지', () => {
+  const rows = [row({ id: 'a', received_at: '2026-10-12T00:00:00Z' }), row({ id: 'b', received_at: '2026-09-02T00:00:00Z' }), row({ id: 'c', received_at: '2026-10-31T15:30:00Z' }), row({ id: 'd', received_at: '2026-10-20T00:00:00Z' })];
+  const g = L.groupByMonth(rows, '2026-11');
+  assert.deepEqual(g.map((x) => [x.ym, ids(x.rows)]), [['2026-11', ['c']], ['2026-10', ['a', 'd']], ['2026-09', ['b']]]);   // c 는 KST 11-01
+  assert.deepEqual(L.groupByMonth([], '2026-11').map((x) => [x.ym, x.rows.length]), [['2026-11', 0]]);
+});

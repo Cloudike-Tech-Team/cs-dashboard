@@ -10,10 +10,11 @@
   // 순서가 곧 select 의 표시 순서. 키는 DB check 제약(schema.sql)과 Edge Function(lib.ts)의 Status 와 같아야 한다.
   // label 은 한국어, en 은 영어 화면 라벨
   const STATUS = {
-    open:    { label: '처리 중',     en: 'In progress',     color: '#B45309' },
-    waiting: { label: '대기',        en: 'Waiting',         color: '#1D4ED8' },
-    delayed: { label: '지연',        en: 'Delayed',         color: '#B91C1C' },
-    deploy:  { label: '배포대기',    en: 'To deploy',       color: '#7C3AED' },
+    // 색은 뜻이 분명한 둘에만: 처리 중 파랑 · 완료 초록. 나머지는 회색 (빨강·주황은 심각도 전용)
+    open:    { label: '처리 중',     en: 'In progress',     color: '#2563EB' },
+    waiting: { label: '대기',        en: 'Waiting',         color: '#6B7280' },
+    delayed: { label: '지연',        en: 'Delayed',         color: '#6B7280' },
+    deploy:  { label: '배포대기',    en: 'To deploy',       color: '#6B7280' },
     done:    { label: '완료',        en: 'Done',            color: '#15803D' },
     unknown: { label: '원인 미확인', en: 'Unknown',         color: '#6B7280' },
   };
@@ -48,7 +49,8 @@
   const DEVICE_EN = { '웹': 'Web', '기타': 'Other' };
   function deviceLabel(device, lang = 'ko') { return lang === 'en' ? DEVICE_EN[device] || device : device; }
 
-  const ISSUE_COLORS = ['#B45309', '#1D4ED8', '#0F766E', '#6B7280', '#7C3AED'];
+  // 상태(파랑·초록) · 심각도(빨강·분홍·주황)와 겹치지 않는 색
+  const ISSUE_COLORS = ['#0F766E', '#4338CA', '#A16207', '#475569', '#9333EA'];
 
   function statusDef(row) { return STATUS[row.status] || STATUS.open; }
   // fields: 번역 표시용 칸(displayFields 결과). 있으면 그 상태 메모를 쓴다
@@ -77,6 +79,45 @@
   function daysSince(iso, now = Date.now()) {
     return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86400000));
   }
+  // ── 처리 현황 보기 · 정렬 (UX 1차)
+  const OVERDUE_DAYS = 7;   // 이 날 이상 열려 있으면 「지연 N일째」
+  // 이월: 이번 달(KST) 전에 접수됐고 아직 완료가 아닌 CS
+  function isCarried(row, nowMonth) { return row.status !== 'done' && monthKST(row.received_at) < nowMonth; }
+  // view: open(미해결 · 모든 달, 기본) | carry(이월) | done(완료) | all(전체)
+  function viewRows(rows, view, nowMonth) {
+    if (view === 'all') return rows;
+    if (view === 'done') return rows.filter((r) => r.status === 'done');
+    if (view === 'carry') return rows.filter((r) => isCarried(r, nowMonth));
+    return rows.filter((r) => r.status !== 'done');
+  }
+  // sort: urgent(심각도 → 지연 상태 → 오래된 순) | oldest | recent. 원본 배열은 그대로
+  function sortRows(rows, sort, yt) {
+    const t = (r) => new Date(r.received_at).getTime();
+    const cmp = {
+      oldest: (a, b) => t(a) - t(b),
+      recent: (a, b) => t(b) - t(a),
+      urgent: (a, b) => SEVERITY_RANK.indexOf(severityOf(b, yt)) - SEVERITY_RANK.indexOf(severityOf(a, yt))
+        || (b.status === 'delayed') - (a.status === 'delayed')
+        || t(a) - t(b),
+    }[sort] || ((a, b) => t(b) - t(a));
+    return [...rows].sort(cmp);
+  }
+  // 완료 전 CS 의 경과: { days, overdue }. 완료면 null
+  function ageInfo(row, now = Date.now()) {
+    const days = ageDays(row, now);
+    return days === null ? null : { days, overdue: days >= OVERDUE_DAYS };
+  }
+  // 버전은 v 없이 저장하고 표시할 때 한 번만 붙인다 (v2.1.6 → 2.1.6)
+  function plainVersion(v) { const s = String(v || '').trim(); return /^v\d/i.test(s) ? s.slice(1) : s; }
+  // 날짜 없이 쓴 처리 이력은 오늘(KST) 날짜를 앞에 붙인다
+  const KST_MD = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit' });
+  function datedEntry(entry, now = Date.now()) {
+    const s = String(entry || '').trim();
+    if (!s || splitTimeline(s).when) return s;
+    const p = Object.fromEntries(KST_MD.formatToParts(new Date(now)).map((x) => [x.type, x.value]));
+    return `${p.month}/${p.day} ${s}`;
+  }
+
   // 목록 · 상세의 D+N. 완료된 CS 는 경과일을 보이지 않는다(null)
   function ageDays(row, now = Date.now()) {
     return row.status === 'done' ? null : daysSince(row.received_at, now);
@@ -155,14 +196,13 @@
     });
   }
 
-  // 해결(Done)=초록, 해결이지만 Rejected 류=회색, 막힘·반려=빨강, 테스트·리뷰=보라, 진행=주황, 그 외(To Do·Backlog·검토 예정)=파랑
+  // 상태와 같은 규칙: 해결(Done)=초록, 진행·테스트·리뷰=파랑, 그 외(반려·막힘·대기)=회색
   function ytStateColor(t) {
     const s = t.state || '';
     if (t.resolved) return /reject|반려|불가|won.?t|duplicate|obsolete/i.test(s) ? '#6B7280' : '#15803D';
-    if (/block|hold|reject|반려|보류|추적 불가/i.test(s)) return '#B91C1C';
-    if (/test|review|ready|테스트|검증/i.test(s)) return '#7C3AED';
-    if (/progress|개발중|검토중|분석|진행/i.test(s)) return '#B45309';
-    return '#1D4ED8';
+    if (/block|hold|reject|반려|보류|추적 불가/i.test(s)) return '#6B7280';
+    if (/progress|test|review|ready|테스트|검증|개발중|검토중|분석|진행/i.test(s)) return '#2563EB';
+    return '#6B7280';
   }
 
   // 티켓 담당: 트래커 담당자(중복 제거). 하나도 못 읽었으면 수동 입력값을 쓴다.
@@ -275,7 +315,7 @@
   }
 
   return {
-    popupPlace, popupBig,
+    popupPlace, popupBig, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261109-1';
+  const APP_VERSION = '20261110-1';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -37,15 +37,14 @@
 
   const state = {
     lang: I.detectLang(storedLang(), navigator.languages || [navigator.language]),   // 'ko' | 'en'
-    month: currentMonthKST(),  // 'YYYY-MM'
-    rows: [],
-    carry: [],                 // 보고 있는 달 이전에 접수돼 아직 완료되지 않은 CS (f/u 용)
+    month: currentMonthKST(),  // 'YYYY-MM' — 왼쪽 월간 요약 · 막대를 볼 달
+    all: [],                   // 모든 달의 CS (한 달 십여 건 규모라 한 번에 읽고 화면에서 거른다)
+    rows: [],                  // state.all 중 state.month 에 접수된 CS (월간 요약 · 막대용)
+    view: 'open',              // 목록 보기: open(미해결 · 모든 달) | carry(이월) | all | done
+    sort: 'urgent',            // 정렬: urgent | oldest | recent
+    scope: 'all',              // 검색 범위: all(전체 기간) | month(state.month 만)
     assignees: [],             // CS 담당 명단 (cs_assignees, 이름순)
     assigneesError: '',
-    history: null,             // 전체 기간 검색용 전체 CS (처음 켤 때 읽고, 저장·삭제하면 비워서 다시 읽음)
-    historyLoading: false,
-    historyError: '',
-    rowsMonth: null,           // state.rows 가 실제로 속한 월 (export 파일명용)
     loading: false,
     editing: null,             // 수정 중인 원본 row (신규면 null)
     busy: false,               // 저장/삭제/빠른 조작 요청 진행 중
@@ -149,10 +148,11 @@
     if (session) {
       $('user-email').textContent = email || '';
       loadAssignees();
-      loadMonth();
+      loadAll();
       checkBackfill();
     } else {
       [...popups.keys()].forEach(closePopup);
+      state.all = [];
       state.rows = [];
       state.selected = null;
       state.filter = null;
@@ -174,44 +174,49 @@
   $('logout-btn').addEventListener('click', () => sb.auth.signOut());
 
   // ───────────── 조회 ─────────────
-  async function loadMonth(opts = {}) {
+  // 모든 달의 CS 를 한 번에 읽는다. 목록(보기 · 정렬 · 검색)과 월간 막대는 이 배열에서 화면이 거른다.
+  async function loadAll(opts = {}) {
     const seq = ++state.loadSeq;
-    const month = state.month;
-    $('month-label').textContent = month;
+    $('month-label').textContent = state.month;
     showError($('list-error'), '');
     $('list-title').textContent = t('list.loading');
     setLoading(true);
-
-    const [{ data, error }, carryRes] = await Promise.all([fetchMonth(month), fetchCarry(month)]);
-
+    const { data, error } = await fetchAll();
     if (seq !== state.loadSeq) return;
     setLoading(false);
-    if (error) {
-      state.rows = [];
-      showError($('list-error'), t('list.loadFailed', { e: error.message }));
-    } else {
-      state.rows = data;
-    }
-    state.carry = carryRes.error ? [] : carryRes.data;
-    if (carryRes.error && !error) showError($('list-error'), t('list.carryFailed', { e: carryRes.error.message }));
-    state.rowsMonth = month;
-    state.filter = null;
+    if (error) showError($('list-error'), t('list.loadFailed', { e: error.message }));
+    state.all = error ? [] : data;
+    deriveMonth();
     state.quick = null;
-    // 전체 기간 검색 중이면 결과를 다시 읽는 중이라 아직 목록에 없을 수 있다
-    state.selected = opts.selected && (historyMode() || allRows().some((r) => r.id === opts.selected)) ? opts.selected : null;
+    state.selected = opts.selected && state.all.some((r) => r.id === opts.selected) ? opts.selected : null;
     renderAll();
     loadSummary(seq);
     loadTickets({ refresh: true });
-    loadTranslations([...state.rows, ...state.carry]);
+    // 화면 언어 번역은 안 끝난 CS · 보고 있는 달 것만 요청한다 (나머지는 있는 번역만 읽음)
+    loadTranslations(state.all, { request: false }).then(() => requestTranslations(workingRows()));
+  }
+  function deriveMonth() { state.rows = state.all.filter((r) => L.monthKST(r.received_at) === state.month); }
+  // 티켓 · 번역을 미리 챙길 CS: 안 끝난 CS 전부 + 보고 있는 달
+  function workingRows() { return state.all.filter((r) => r.status !== 'done' || L.monthKST(r.received_at) === state.month); }
+  // 왼쪽 월간 요약 · 막대의 달만 바꾼다 (목록은 그대로)
+  function changeMonth(month) {
+    state.month = month;
+    $('month-label').textContent = month;
+    deriveMonth();
+    if (state.filter && state.filter.type === 'issue') state.filter = null;   // 이슈 번호는 달마다 다르다
+    if (state.scope === 'month') renderScope();
+    renderAll();
+    loadSummary(++state.loadSeq);
+    loadTickets({ rows: state.rows });
   }
 
-  // 이번 달 CS 에 연결된 티켓의 담당자·상태를 YouTrack·Jira 에서 읽어 온다 (Edge Function `tickets`. 표시 전용, DB 에 쓰지 않음).
-  // refresh: 캐시에 있어도 다시 읽음 (월 이동·새로고침 버튼). 아니면 처음 보는 ID 만.
-  // rows: 티켓을 읽을 CS (기본: 이 달 + 밀린 미해결. 전체 기간 검색은 결과만)
-  async function loadTickets({ refresh = false, rows = [...state.rows, ...state.carry] } = {}) {
+  // 티켓의 담당자·상태를 YouTrack·Jira 에서 읽어 온다 (Edge Function `tickets`. 표시 전용, DB 에 쓰지 않음).
+  // refresh: 캐시에 있어도 다시 읽음 (새로고침 버튼). 아니면 처음 보는 ID 만.
+  // rows: 티켓을 읽을 CS (기본: 안 끝난 CS + 보고 있는 달)
+  async function loadTickets({ refresh = false, rows = workingRows() } = {}) {
     const ids = L.ticketIds(rows).filter((id) => refresh || !(id in state.yt));
     if (!ids.length) { renderYtStatus(); return; }
-    state.ytBusy++;            // 월을 빠르게 넘기면 요청이 겹칠 수 있음. 결과는 ID 별로 합치므로 순서는 상관없다
+    state.ytBusy++;            // 요청이 겹칠 수 있음. 결과는 ID 별로 합치므로 순서는 상관없다
     renderYtStatus();
     try {
       const warnings = new Set();
@@ -238,9 +243,7 @@
     $('tickets-refresh').disabled = state.ytBusy > 0;
     $('tickets-refresh').textContent = state.ytBusy ? t('tickets.loading') : t('tickets.refresh');
   }
-  $('tickets-refresh').addEventListener('click', () => loadTickets(historyMode() && state.history
-    ? { refresh: true, rows: filteredRows(state.history).slice(0, 300) }
-    : { refresh: true }));
+  $('tickets-refresh').addEventListener('click', () => loadTickets({ refresh: true, rows: [...new Set([...workingRows(), ...visibleRows().slice(0, 300)])] }));
 
   function renderAll() {
     renderKpi();
@@ -250,16 +253,13 @@
     renderNameList();
   }
 
-  // 한 달에 1000건이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
-  async function fetchMonth(month) {
-    const { from, to } = monthRange(month);
+  // 한 번에 1000건(PostgREST 기본 max-rows)이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
+  async function fetchAll() {
     const rows = [];
     for (let offset = 0; ; offset += PAGE) {
       const { data, error } = await sb
         .from('cs_tickets')
         .select('*')
-        .gte('received_at', from)
-        .lt('received_at', to)
         .order('received_at', { ascending: false })
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })   // 페이지 경계에서 순서가 흔들리지 않게
@@ -270,76 +270,74 @@
     }
   }
 
-  // 밀린 미해결: 이 달 시작 전에 접수됐고 지금 완료가 아닌 건 (몇 달 전이든 완료될 때까지 계속 따라옴).
-  // 오래 밀린 건부터 보이도록 오래된 순.
-  const CARRY_LIMIT = 500;
-  async function fetchCarry(month) {
-    const { from } = monthRange(month);
-    return await sb
-      .from('cs_tickets')
-      .select('*')
-      .neq('status', 'done')
-      .lt('received_at', from)
-      .order('received_at', { ascending: true })
-      .order('id', { ascending: true })
-      .limit(CARRY_LIMIT);
-  }
-
   function setLoading(on) {
     state.loading = on;
     $('export-btn').disabled = on;
   }
 
-  function allRows() { return [...state.rows, ...state.carry, ...(state.history || [])]; }
-
-  // ───────────── 전체 기간 검색 ─────────────
-  const LS_SEARCH_ALL = 'cs.searchAll';
-  try { $('search-all').checked = localStorage.getItem(LS_SEARCH_ALL) === '1'; } catch { /* 무시 */ }
-  function syncSearchPlaceholder() {
-    $('search-input').placeholder = $('search-all').checked ? t('search.placeholderAll') : t('search.placeholder');
+  function allRows() { return state.all; }
+  // 저장 · 변경된 한 건을 목록에 반영
+  function replaceRow(row) {
+    const idx = state.all.findIndex((x) => x.id === row.id);
+    if (idx >= 0) state.all[idx] = row;
+    deriveMonth();
   }
-  syncSearchPlaceholder();
-  function historyMode() { return $('search-all').checked && $('search-input').value.trim() !== ''; }
 
-  // 모든 달의 CS 를 페이지 단위로 읽는다. 월 수십~수백 건 규모라 브라우저에서 거르는 편이
-  // 배열 컬럼(티켓·타임라인)까지 같은 규칙(matchesSearch)으로 찾을 수 있어 단순하다.
-  async function fetchHistory() {
-    const rows = [];
-    for (let offset = 0; ; offset += PAGE) {
-      const { data, error } = await sb
-        .from('cs_tickets')
-        .select('*')
-        .order('received_at', { ascending: false })
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .range(offset, offset + PAGE - 1);
-      if (error) return { data: null, error };
-      rows.push(...data);
-      if (data.length < PAGE) return { data: rows, error: null };
-    }
+  // ───────────── 보기 · 정렬 · 검색 ─────────────
+  const VIEWS = ['open', 'carry', 'all', 'done'];
+  const SORTS = ['urgent', 'oldest', 'recent'];
+  const LS_LIST = 'cs.listPrefs';   // 마지막으로 고른 보기 · 정렬 · 검색 범위 (이 브라우저만)
+  try {
+    const p = JSON.parse(localStorage.getItem(LS_LIST) || '{}');
+    if (VIEWS.includes(p.view)) state.view = p.view;
+    if (SORTS.includes(p.sort)) state.sort = p.sort;
+    if (p.scope === 'month') state.scope = 'month';
+  } catch { /* 무시 */ }
+  function saveListPrefs() { try { localStorage.setItem(LS_LIST, JSON.stringify({ view: state.view, sort: state.sort, scope: state.scope })); } catch { /* 무시 */ } }
+  function searchQuery() { return $('search-input').value.trim(); }
+
+  // 지금 목록에 보이는 CS: 보기 → (검색 범위) → 필터 · 검색 → 정렬
+  function visibleRows() {
+    let rows = L.viewRows(state.all, state.view, currentMonthKST());
+    if (state.scope === 'month' && searchQuery()) rows = rows.filter((r) => L.monthKST(r.received_at) === state.month);
+    return L.sortRows(filteredRows(rows), state.sort, state.yt);
   }
-  async function ensureHistory() {
-    if (state.history || state.historyLoading) return;
-    state.historyLoading = true;
-    state.historyError = '';
-    const { data, error } = await fetchHistory();
-    state.historyLoading = false;
-    if (error) state.historyError = t('hist.loadFailed', { e: error.message });
-    else state.history = data;
+
+  function renderViewBar() {
+    const counts = Object.fromEntries(VIEWS.map((v) => [v, L.viewRows(state.all, v, currentMonthKST()).length]));
+    $('view-tabs').replaceChildren(...VIEWS.map((v) => {
+      const b = el('button', { type: 'button', class: state.view === v ? 'on' : '', 'aria-pressed': String(state.view === v) },
+        el('span', { text: t(`view.${v}`) }), el('b', { text: String(counts[v]) }));
+      b.addEventListener('click', () => setView(v));
+      return b;
+    }));
+  }
+  function setView(v) {
+    if (state.view === v) return;
+    state.view = v;
+    saveListPrefs();
+    renderKpi();
     renderList();
-    renderDetail();
-    loadHistoryTickets();
-    // 전체 기간은 읽기만 한다 (옛 기록 번역은 「기존 기록 번역」이 채움)
-    if (state.history) loadTranslations(state.history, { request: false });
+    loadTickets({ rows: visibleRows().slice(0, 300) });   // 완료 · 전체 보기에서 처음 보이는 티켓
   }
-  // 결과에 보이는 티켓만 트래커에서 읽는다 (입력이 멈춘 뒤)
-  let historyTicketTimer;
-  function loadHistoryTickets() {
-    clearTimeout(historyTicketTimer);
-    if (!historyMode() || !state.history) return;
-    historyTicketTimer = setTimeout(() => loadTickets({ rows: filteredRows(state.history).slice(0, 300) }), 400);
+  function renderSortSelect() {
+    $('sort-select').replaceChildren(...SORTS.map((k) => el('option', { value: k, text: t(`sort.${k}`) })));
+    $('sort-select').value = state.sort;
   }
-  function invalidateHistory() { state.history = null; }
+  $('sort-select').addEventListener('change', () => { state.sort = $('sort-select').value; saveListPrefs(); renderList(); });
+  function renderScope() {
+    $('search-scope').replaceChildren(el('option', { value: 'all', text: t('scope.all') }), el('option', { value: 'month', text: t('scope.month', { month: state.month }) }));
+    $('search-scope').value = state.scope;
+  }
+  $('search-scope').addEventListener('change', () => { state.scope = $('search-scope').value; saveListPrefs(); renderKpi(); renderList(); });
+
+  // 검색 결과에 보이는 티켓만 트래커에서 읽는다 (입력이 멈춘 뒤)
+  let searchTicketTimer;
+  function loadSearchTickets() {
+    clearTimeout(searchTicketTimer);
+    if (!searchQuery()) return;
+    searchTicketTimer = setTimeout(() => loadTickets({ rows: visibleRows().slice(0, 300) }), 400);
+  }
 
   // 월 목록·밀린 미해결 모두 같은 필터·검색을 적용한다
   function filteredRows(rows = state.rows) {
@@ -348,7 +346,8 @@
     return L.applyFilter(rows, state.filter, issues, state.yt).filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r)));
   }
 
-  function deviceLine(r) { const d = L.deviceLabel(r.device, state.lang); return r.version ? `${d} · v${r.version}` : d; }
+  // 버전은 v 없이 저장하고 여기서 한 번만 붙인다 (예전에 v 를 넣어 저장한 값도 vv 가 되지 않게)
+  function deviceLine(r) { const d = L.deviceLabel(r.device, state.lang); const v = L.plainVersion(r.version); return v ? `${d} · v${v}` : d; }
 
   function shortTicket(t) {
     try { const u = new URL(t); return u.pathname.split('/').filter(Boolean).pop() || u.host; }
@@ -388,86 +387,59 @@
     return issue ? issue.label : '';
   }
 
-  // 한 줄 행: 날짜 | 고객사 | 기기 | 제목(유일한 강조) | CS 담당 | CS 상태 | 티켓 담당 | 티켓 상태.
-  // 티켓 담당·상태는 YouTrack·Jira 값 (티켓 담당은 트래커에서 못 읽으면 수동 입력값).
-  // kind: 'month' | 'carry'(밀린 미해결: 제목 옆 경과일 D+N) | 'history'(전체 기간 검색)
-  // 다른 달 행은 접수일에 연도를 붙인다 (보고 있는 달과 연도가 다르거나 전체 기간 검색이면 YY-MM-DD).
-  // 미해결 CS 의 접수 후 경과일 D+N (30일 이상은 빨갛게). 완료면 null
-  function ageNode(age) {
-    return age === null ? null : el('span', { class: 'row-age mono' + (age >= 30 ? ' old' : ''), text: `D+${age}`, title: t('list.age', { n: age }) });
+  // 완료 전 CS 의 경과: 「N일째」, 7일 이상은 「지연 N일째」(빨강). 완료면 null
+  function ageNode(r) {
+    const a = L.ageInfo(r);
+    if (!a) return null;
+    const text = a.days === 0 ? t('age.today') : t(a.overdue ? 'age.overdue' : 'age.days', { n: a.days });
+    return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: t('age.title', { n: a.days, d: L.OVERDUE_DAYS }) });
   }
   function receivedNode(r) {
-    return [el('span', { text: fmtDateTime(r.received_at) }), ...(L.ageDays(r) === null ? [] : [' ', ageNode(L.ageDays(r))])];
+    const age = ageNode(r);
+    return [el('span', { class: 'mono', text: fmtDateTime(r.received_at) }), ...(age ? [' ', age] : [])];
+  }
+  // 심각도 배지 (목록 · 팝업). 보통은 흐린 글자. YouTrack Priority 로 정해진 값은 점선 + 툴팁
+  function sevBadge(r) {
+    const ys = L.ytSeverity(r, state.yt);
+    const key = ys ? ys.key : L.severityKey(r);
+    const b = el('span', { class: 'sev-badge' + (key === 'normal' ? ' normal' : '') + (ys ? ' from-yt' : ''), text: L.severityLabel(key, state.lang), title: ys ? t('sev.fromYt', { ids: ys.ids.join(', ') }) : '' });
+    b.style.setProperty('--s', L.SEVERITY[key].color);
+    return b;
   }
 
-  function rowNode(r, kind = 'month') {
-    const carry = kind === 'carry';
+  // 한 줄 행: 접수일 | 고객사 | 기기 | 심각도 | 제목 + 경과 · 이월 · 티켓 수 | CS 담당 | CS 상태 | 티켓 담당 | 티켓 상태.
+  // 왼쪽 띠 색 = 심각도 (보통은 없음). 올해가 아닌 건은 접수일에 연도(YY-MM-DD).
+  function rowNode(r) {
     const p = kstParts(new Date(r.received_at));
-    const age = L.ageDays(r);
-    const withYear = kind === 'history' || (carry && p.year !== state.month.slice(0, 4));
-    const when = withYear ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
+    const thisYear = currentMonthKST().slice(0, 4);
+    const when = p.year !== thisYear ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
     const f = disp(r);
-    // 행 안에 심각도 select 를 넣어야 해서 <button> 대신 role=button 인 div (button 안에는 select 를 못 넣는다)
-    const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (carry ? ' carry' : '') + (state.selected === r.id ? ' active' : '') },
-      el('span', { class: 'col-when mono', text: when, title: `${kind === 'month' ? '' : `${p.year}-`}${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` }),
-      el('span', { class: 'col-who mono', text: r.customer, title: r.customer }),
+    const sk = L.severityOf(r, state.yt);
+    const carried = L.isCarried(r, currentMonthKST());
+    const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (state.selected === r.id ? ' active' : '') + (sk !== 'normal' ? ' sev' : '') },
+      el('span', { class: 'col-when mono', text: when, title: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` }),
+      el('span', { class: 'col-who', text: r.customer, title: r.customer }),
       el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
-      el('span', { class: 'col-sev' }, severitySelect(r)),
+      el('span', { class: 'col-sev' }, sevBadge(r)),
       el('span', { class: 'col-what' },
-        el('span', { class: 'row-title', text: f.title || t('list.noTitle') }),
-        ageNode(age),
+        el('span', { class: 'row-title', text: f.title || t('list.noTitle'), title: f.title || '' }),
+        ageNode(r),
+        carried ? el('span', { class: 'row-tag', text: t('tag.carry'), title: t('tag.carryTitle') }) : null,
         r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: t('list.ticketCount', { n: r.tickets.length }) }) : null),
-      el('span', { class: 'col-asg' + (r.assignee ? '' : ' none'), text: r.assignee || t('common.unassigned'), title: L.assigneeLine(r, state.yt, state.lang) }),
+      // 담당이 없는 미해결은 눈에 띄게
+      el('span', { class: 'col-asg' + (r.assignee ? '' : r.status === 'done' ? ' none' : ' none warn'), text: r.assignee || t('common.unassigned'), title: L.assigneeLine(r, state.yt, state.lang) }),
       // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
       el('span', { class: 'col-status', title: f.status_note || '' }, el('span', { class: 'dot' }), el('span', { text: L.statusName(r.status, state.lang) })),
       ticketAsgNode(r, 'col-tasg'),
       ticketStateNode(r),
     );
     b.style.setProperty('--c', L.statusColor(r));
+    b.style.setProperty('--s', L.SEVERITY[sk].color);
     b.addEventListener('click', () => selectRow(r.id));
     b.addEventListener('keydown', (e) => {
       if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectRow(r.id); }
     });
     return b;
-  }
-
-  // 목록에서 바로 고치는 심각도 select. 보통은 흐리게, 나머지는 색 배지처럼 보인다.
-  // 행 클릭(상세 열기)으로 번지지 않게 막는다.
-  // YouTrack Priority 가 있는 CS 는 그 값을 보여 주고 잠근다 (바꾸려면 YouTrack 에서)
-  function severitySelect(r) {
-    const ys = L.ytSeverity(r, state.yt);
-    const key = ys ? ys.key : L.severityKey(r);
-    const sel = el('select', { class: 'sev-select' + (key === 'normal' ? ' normal' : '') + (ys ? ' from-yt' : ''), 'aria-label': t('list.sevAria', { title: disp(r).title || 'CS' }), title: ys ? t('sev.fromYt', { ids: ys.ids.join(', ') }) : t('list.sevTitle') },
-      Object.keys(L.SEVERITY).map((k) => el('option', { value: k, text: L.severityLabel(k, state.lang) })));
-    sel.value = key;
-    sel.style.setProperty('--s', L.SEVERITY[key].color);
-    sel.disabled = state.busy || !!ys;
-    ['click', 'keydown'].forEach((t) => sel.addEventListener(t, (e) => e.stopPropagation()));
-    sel.addEventListener('change', () => saveSeverity(r, sel));
-    return sel;
-  }
-
-  async function saveSeverity(r, sel) {
-    if (state.busy) { sel.value = L.severityKey(r); return; }
-    state.busy = true;
-    sel.disabled = true;
-    const { data, error } = await sb.from('cs_tickets').update({ severity: sel.value })
-      .eq('id', r.id)
-      .eq('updated_at', r.updated_at)   // 수정 모달과 같은 낙관적 잠금
-      .select();
-    state.busy = false;
-    if (error || data.length === 0) {
-      sel.value = L.severityKey(r);
-      sel.disabled = false;
-      toast(error ? t('sev.failed', { e: error.message }) : t('conflict'));
-      return;
-    }
-    [state.rows, state.carry, state.history || []].forEach((list) => {
-      const idx = list.findIndex((x) => x.id === r.id);
-      if (idx >= 0) list[idx] = data[0];
-    });
-    toast(t('sev.changed', { label: L.severityLabel(L.severityKey(data[0]), state.lang) }));
-    renderAll();
   }
 
   function ticketAsgNode(r, cls) {
@@ -483,53 +455,24 @@
     return n;
   }
 
+  // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
   function renderList() {
-    const hist = historyMode();
-    $('history-list').hidden = !hist;
-    $('cs-list').hidden = hist;
-    if (hist) { renderHistory(); return; }
-    $('history-empty').hidden = true;
-    const rows = filteredRows();
-    $('cs-list').replaceChildren(...rows.map((r) => rowNode(r)));
-    const carry = filteredRows(state.carry);
-    $('carry-box').hidden = carry.length === 0;
-    $('carry-list').replaceChildren(...carry.map((r) => rowNode(r, 'carry')));
-    const carryOpen = carry.filter((r) => r.status !== 'done').length;
-    const year = state.month.slice(0, 4);
-    const byMonth = L.carryMonths(carry).map(([ym, n]) => I.monthCount(state.lang, ym, ym.slice(0, 4) === year, n));
-    $('carry-title').textContent = t('carry.title', { n: carryOpen }) + (byMonth.length ? ` (${byMonth.join(' · ')})` : '')
-      + (state.carry.length >= CARRY_LIMIT ? t('carry.limit', { n: CARRY_LIMIT }) : '');
-    const total = state.rows.length;
-    const name = filterName();
-    $('list-title').textContent = state.filter
-      ? t('list.filtered', { name, n: rows.length, total })
-      : (rows.length === total ? t('list.month', { month: state.month, n: total }) : t('list.search', { month: state.month, n: rows.length, total }));
+    renderViewBar();
+    const base = L.viewRows(state.all, state.view, currentMonthKST());
+    const rows = visibleRows();
+    const q = searchQuery();
+    $('cs-list').replaceChildren(...(q
+      ? L.groupByRecency(rows).flatMap((g) => [
+        el('div', { class: 'hist-group', title: t('list.searchHint') }, el('strong', { text: L.recencyLabel(g.key, state.lang) }), el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
+        ...g.rows.map((r) => rowNode(r)),
+      ])
+      : rows.map((r) => rowNode(r))));
+    const view = t(`view.${state.view}`);
+    $('list-title').textContent = (rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length }))
+      + (state.filter ? t('list.filterOn', { name: filterName() }) : '');
     const err = !!$('list-error').textContent;
-    $('empty').hidden = rows.length > 0 || err;
-    $('empty').textContent = total > 0 ? t('list.emptyFiltered') : t('side.noRows');
-  }
-
-  // 전체 기간 검색 결과. 월 목록·밀린 미해결은 숨긴다. 사이드바 필터도 함께 적용(AND).
-  function renderHistory() {
-    $('empty').hidden = true;
-    $('carry-box').hidden = true;
-    if (!state.history) {
-      $('history-list').replaceChildren();
-      $('list-title').textContent = t('hist.loading');
-      $('history-empty').hidden = !state.historyError;
-      $('history-empty').textContent = state.historyError;
-      if (!state.historyError) ensureHistory();
-      return;
-    }
-    const rows = filteredRows(state.history);
-    // 이번 달 / 최근 30일 / 최근 1년 / 1년 이상 전 으로 나눠 머리글을 단다
-    $('history-list').replaceChildren(...L.groupByRecency(rows).flatMap((g) => [
-      el('div', { class: 'hist-group' }, el('strong', { text: L.recencyLabel(g.key, state.lang) }), el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
-      ...g.rows.map((r) => rowNode(r, 'history')),
-    ]));
-    $('list-title').textContent = t('hist.title', { n: rows.length }) + (state.filter ? t('hist.filter', { name: filterName() }) : '') + t('hist.total', { n: state.history.length });
-    $('history-empty').hidden = rows.length > 0;
-    $('history-empty').textContent = t('hist.empty');
+    $('empty').hidden = rows.length > 0 || err || state.loading;
+    $('empty').textContent = base.length > 0 ? t('list.emptyFiltered') : t('list.emptyView');
   }
 
   function selectRow(id) {
@@ -539,7 +482,7 @@
     renderList();
     renderDetail();
     // 세로로 쌓이는 폭에서는 상세가 목록 아래에 있어 눈에 띄지 않으므로 스크롤해 준다
-    if (state.selected && window.matchMedia('(max-width: 1000px)').matches) $('detail').scrollIntoView({ block: 'start' });
+    if (state.selected && window.matchMedia('(max-width: 1100px)').matches) $('detail').scrollIntoView({ block: 'start' });
   }
 
   // ───────────── 상세 패널 ─────────────
@@ -598,7 +541,7 @@
     $('detail-history').replaceChildren(...(f.timeline.length
       ? f.timeline.map((entry) => {
           const { when, text } = L.splitTimeline(entry);
-          return el('li', {}, el('span', { class: 'mono muted', text: when }), el('span', { class: 'hist-dot' }), el('span', { text }));
+          return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text }));
         })
       : [el('li', { class: 'muted', text: t('detail.noHistory') })]));
     showError($('detail-error'), '');
@@ -634,7 +577,7 @@
       const submit = () => {
         const entry = input.value.trim();
         if (!entry || /^\d{1,2}\/\d{1,2}$/.test(entry)) { showError($('detail-error'), t('q.historyEmpty')); input.focus(); return; }
-        saveQuick(r, { timeline: [...r.timeline, entry] });
+        saveQuick(r, { timeline: [...r.timeline, L.datedEntry(entry)] });
       };
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
       box.append(el('div', { class: 'quick-form' }, input, quickButtons(submit)));
@@ -677,11 +620,7 @@
       showError($('detail-error'), error ? t('save.failed', { e: error.message }) : t('conflict'));
       return;
     }
-    // 밀린 미해결에서 완료로 바꾼 건도 다음 조회까지는 남겨 둔다 (바로 되돌릴 수 있게)
-    [state.rows, state.carry, state.history || []].forEach((list) => {
-      const idx = list.findIndex((x) => x.id === r.id);
-      if (idx >= 0) list[idx] = data[0];
-    });
+    replaceRow(data[0]);
     state.quick = null;
     toast(t('save.done'));
     rememberNames([data[0].assignee, data[0].ticket_assignee]);
@@ -693,17 +632,20 @@
   $('history-btn').addEventListener('click', () => { state.quick = 'history'; renderDetail(); });
   $('assignee-btn').addEventListener('click', () => { state.quick = 'assignee'; renderDetail(); });
   $('edit-btn').addEventListener('click', () => { const r = selectedRow(); if (r) openDialog(r); });
-  $('detail-close').addEventListener('click', () => { state.selected = null; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); });
+  function closeDetail() { state.selected = null; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); }
+  $('detail-close').addEventListener('click', closeDetail);
   $('detail-popup').addEventListener('click', () => { if (state.selected) openPopup(state.selected); });
   $('tr-toggle').addEventListener('click', () => { state.showOriginal = !state.showOriginal; renderDetail(); });
 
   // ───────────── KPI · 사이드바 ─────────────
+  // 위쪽 집계는 지금 보이는 목록(보기 · 필터 · 검색) 기준
   function renderKpi() {
-    const k = L.kpi(state.rows);
+    const vis = visibleRows();
+    const k = L.kpi(vis);
     $('kpi-total').textContent = String(k.total);
     $('kpi-open').textContent = String(k.open);
-    const carryOpen = state.carry.filter((r) => r.status !== 'done').length;
-    $('kpi-open-sub').textContent = [k.total ? t('kpi.openShare', { p: Math.round((k.open / k.total) * 100) }) : '', carryOpen ? t('kpi.carryOpen', { n: carryOpen }) : '']
+    const carryOpen = vis.filter((r) => L.isCarried(r, currentMonthKST())).length;
+    $('kpi-open-sub').textContent = [k.total && k.open !== k.total ? t('kpi.openShare', { p: Math.round((k.open / k.total) * 100) }) : '', carryOpen ? t('kpi.carryOpen', { n: carryOpen }) : '']
       .filter(Boolean).join(' · ');
     $('kpi-ticketed').textContent = String(k.ticketed);
     $('kpi-ticketed-of').textContent = `/ ${k.total}`;
@@ -714,10 +656,10 @@
     $('kpi-ring-btn').setAttribute('aria-label', state.filter ? t('kpi.ringClear') : t('kpi.ringTitle'));
     $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
 
-    // 심각도: 이 달 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
+    // 심각도: 보이는 목록의 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
     const urgent = ['hotfix', 'critical', 'major'];
     $('kpi-sev').replaceChildren(...urgent.map((key) => {
-      const n = state.rows.filter((r) => r.status !== 'done' && L.severityOf(r, state.yt) === key).length;
+      const n = vis.filter((r) => r.status !== 'done' && L.severityOf(r, state.yt) === key).length;
       const b = el('button', { type: 'button', class: 'legend-btn sev-kpi-btn' + (isActive('severity', key) ? ' active' : '') + (n ? '' : ' zero') },
         el('span', { class: 'dot' }), el('span', { text: L.severityLabel(key, state.lang) }), el('b', { text: String(n) }));
       b.style.setProperty('--c', L.SEVERITY[key].color);
@@ -727,7 +669,7 @@
 
     // 상태별 도넛 + 범례(누르면 상태 필터). 0건인 상태는 그리지 않는다
     const C = 2 * Math.PI * 15.5;
-    const counts = Object.keys(L.STATUS).map((key) => [key, state.rows.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === key).length]).filter(([, n]) => n > 0);
+    const counts = Object.keys(L.STATUS).map((key) => [key, vis.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === key).length]).filter(([, n]) => n > 0);
     const statusFilter = state.filter && state.filter.type === 'status' ? state.filter.value : null;
     const svgNS = 'http://www.w3.org/2000/svg';
     let offset = 0;
@@ -862,17 +804,19 @@
   $('kpi-ring-btn').addEventListener('click', () => { if (!state.filter) return; state.filter = null; renderKpi(); renderSidebar(); renderList(); });
 
   // ───────────── 툴바 ─────────────
-  $('prev-month').addEventListener('click', () => { state.month = shiftMonth(state.month, -1); loadMonth(); });
-  $('next-month').addEventListener('click', () => { state.month = shiftMonth(state.month, 1); loadMonth(); });
-  $('this-month').addEventListener('click', () => { state.month = currentMonthKST(); loadMonth(); });
-  $('search-input').addEventListener('input', () => { renderList(); loadHistoryTickets(); });
-  $('search-all').addEventListener('change', () => {
-    try { localStorage.setItem(LS_SEARCH_ALL, $('search-all').checked ? '1' : '0'); } catch { /* 무시 */ }
-    syncSearchPlaceholder();
-    // 켤 때마다 최신으로 다시 읽는다 (다른 사람이 그 사이 등록·수정했을 수 있음)
-    if ($('search-all').checked) invalidateHistory();
-    renderList();
-    loadHistoryTickets();
+  $('prev-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, -1)));
+  $('next-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, 1)));
+  $('this-month').addEventListener('click', () => changeMonth(currentMonthKST()));
+  $('search-input').addEventListener('input', () => { renderKpi(); renderList(); loadSearchTickets(); });
+  // 단축키: / 로 검색, Esc 로 열린 빠른 폼 → 상세 순서로 닫기 (입력 중이거나 창이 열려 있으면 그대로)
+  document.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.defaultPrevented || document.querySelector('dialog[open]')) return;
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if (e.key === '/' && !typing && !$('app-view').hidden) { e.preventDefault(); $('search-input').focus(); return; }
+    if (e.key !== 'Escape') return;
+    if (e.target === $('search-input') && searchQuery()) return;   // 검색칸 Esc 는 브라우저가 검색어를 지움
+    if (state.quick) { state.quick = null; renderDetail(); return; }
+    if (state.selected) { e.preventDefault(); closeDetail(); }
   });
   $('export-btn').addEventListener('click', exportCsv);
   $('new-btn').addEventListener('click', () => openDialog(null));
@@ -989,7 +933,7 @@
       f.customer.value = row.customer;
       f.received_at.value = toLocalInput(row.received_at);
       f.device.value = row.device;
-      f.version.value = row.version;
+      f.version.value = L.plainVersion(row.version);
       f.title.value = row.title;
       f.status.value = row.status;
       // YouTrack Priority 가 있으면 그 값을 보여 주고 잠근다. 저장할 때는 콘솔에 저장된 값을 그대로 둔다
@@ -1047,7 +991,7 @@
       customer: f.customer.value.trim(),
       received_at: fromLocalInput(f.received_at.value),
       device: f.device.value,
-      version: f.version.value.trim(),
+      version: L.plainVersion(f.version.value),
       title: f.title.value.trim(),
       status: f.status.value,
       severity: f.severity.disabled && state.editing ? L.severityKey(state.editing) : f.severity.value,
@@ -1056,7 +1000,8 @@
       ticket_assignee: f.ticket_assignee.value.trim(),
       description: f.description.value.trim(),
       notes: f.notes.value.trim(),
-      timeline: listValues('timeline'),
+      // 새로 쓴 이력에 날짜가 없으면 오늘 날짜를 붙인다 (원래 있던 줄은 그대로)
+      timeline: listValues('timeline').map((v) => (state.editing && state.editing.timeline.includes(v) ? v : L.datedEntry(v))),
       tickets: listValues('tickets'),
     };
     const missing = [];
@@ -1098,13 +1043,8 @@
     dialog.close();
     toast(target ? t('form.updated') : t('form.created'));
     requestTranslations([res.data[0]]);   // 보던 달 밖의 CS 를 고쳤어도 번역되게
-    // 저장한 CS 가 있는 달로 이동하고, 그 CS 를 상세에 연다.
-    // 밀린 미해결에서 고친 건은 f/u 중이므로 지금 보는 달에 머문다.
-    // 전체 기간 검색 결과에서 고친 건도 마찬가지로 보던 화면(검색 결과)에 머문다.
-    const fromCarry = target && state.carry.some((x) => x.id === target.id);
-    invalidateHistory();
-    if (!fromCarry && !(target && historyMode())) state.month = toLocalInput(res.data[0].received_at).slice(0, 7);
-    loadMonth({ selected: res.data[0].id });
+    // 보던 목록에 머문 채 저장한 CS 를 상세에 연다 (지금 보기에 없으면 상세만 열림)
+    loadAll({ selected: res.data[0].id });
   });
 
   function setDeleteConfirm(on) {
@@ -1126,8 +1066,7 @@
     if (data.length === 0) { setDeleteConfirm(false); showError($('form-error'), t('conflict')); return; }
     dialog.close();
     toast(t('del.done'));
-    invalidateHistory();
-    loadMonth();
+    loadAll();
   });
 
   // ───────────── Edge Function 호출 (`ai`, `tickets`) ─────────────
@@ -1174,7 +1113,7 @@
     const dt = parsedDateToInput(p.received_at);
     if (dt) f.received_at.value = dt;
     f.device.value = p.device && DEVICES.includes(p.device) ? p.device : '';
-    f.version.value = p.version || '';
+    f.version.value = L.plainVersion(p.version);
     f.description.value = p.description || '';
     f.notes.value = p.notes || '';
     // 댓글 → 처리 이력. 기존 입력칸은 비우고 순서대로 채운다 (붙여넣기는 새 CS 흐름에서만 쓰임)
@@ -1255,7 +1194,7 @@
     catch { toast(t('sum.copyFailed')); }
   });
 
-  // ───────────── CSV 내보내기 (해당 월 전체) ─────────────
+  // ───────────── CSV 내보내기 (지금 보이는 목록 그대로) ─────────────
   function csvCell(v) {
     let s = v == null ? '' : String(v);
     if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;   // 엑셀 수식 인젝션 방지
@@ -1264,13 +1203,14 @@
   function exportCsv() {
     if (state.loading) return;
     if ($('list-error').textContent) { toast(t('csv.noList')); return; }
-    if (!state.rows.length) { toast(t('csv.empty')); return; }
+    const rows = visibleRows();
+    if (!rows.length) { toast(t('csv.empty')); return; }
     const header = [t('csv.received'), t('csv.reporter'), t('csv.customer'), t('csv.device'), t('csv.version'), t('csv.title'), t('csv.severity'),
       t('csv.csStatus'), t('csv.csOwner'), t('csv.ticketOwner'), t('csv.ticketStatus'), t('csv.desc'), t('csv.notes'), t('csv.timeline'),
       t('csv.tickets'), t('csv.created'), t('csv.updated')];
     // 사람이 쓴 칸은 화면 언어 쪽 (번역이 없으면 원문)
-    const lines = [header, ...state.rows.map((r) => { const f = disp(r); return [
-      fmtDateTime(r.received_at), r.reporter, r.customer, L.deviceLabel(r.device, state.lang), r.version,
+    const lines = [header, ...rows.map((r) => { const f = disp(r); return [
+      fmtDateTime(r.received_at), r.reporter, r.customer, L.deviceLabel(r.device, state.lang), L.plainVersion(r.version),
       f.title, L.severityLabel(L.severityOf(r, state.yt), state.lang), L.statusLabel(r, state.lang, f), r.assignee, L.ticketAssignees(r, state.yt).names.join(', '),
       L.ticketInfos(r, state.yt).filter((x) => x.yt).map((x) => `${x.id} ${x.yt.state}`).join('\n'),
       f.description, f.notes, f.timeline.join('\n'), r.tickets.join('\n'),
@@ -1278,7 +1218,7 @@
     ]; })].map((cols) => cols.map(csvCell).join(','));
     // BOM 을 붙여야 엑셀에서 한글이 깨지지 않음
     const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${state.rowsMonth}.csv` });
+    const a = el('a', { href: URL.createObjectURL(blob), download: `CS_${state.view}_${toLocalInput(new Date().toISOString()).slice(0, 10)}.csv` });
     document.body.append(a);
     a.click();
     a.remove();
@@ -1298,7 +1238,7 @@
   function renderNameList() {
     let saved = [];
     try { saved = JSON.parse(localStorage.getItem(LS_NAMES) || '[]'); } catch { /* 무시 */ }
-    const fromRows = state.rows.flatMap((r) => [r.assignee, r.ticket_assignee]);
+    const fromRows = state.all.flatMap((r) => [r.assignee, r.ticket_assignee]);
     const names = [...new Set([...fromRows, ...saved].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
     $('assignee-names').replaceChildren(...names.map((n) => el('option', { value: n })));
   }
@@ -1422,7 +1362,7 @@
   $('asg-close').addEventListener('click', () => asgDialog.close());
   asgDialog.addEventListener('close', () => {
     // 이름이 바뀌었을 수 있으니 목록·검색 결과를 다시 읽는다 (열려 있던 상세는 유지)
-    if (asgChanged) { invalidateHistory(); loadMonth({ selected: state.selected }); }
+    if (asgChanged) loadAll({ selected: state.selected });
   });
   $('asg-add-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -1517,9 +1457,9 @@
     const cs = el('span', { class: 'status-inline', text: L.statusLabel(r, state.lang, f) });
     cs.style.setProperty('--c', L.statusColor(r));
     const meta = [
-      ['col.customer', el('span', { class: 'mono bold', text: r.customer })],
+      ['col.customer', el('span', { class: 'bold', text: r.customer })],
       ['col.device', el('span', { text: deviceLine(r) })],
-      ['col.received', el('span', { class: 'mono' }, ...receivedNode(r))],
+      ['col.received', el('span', {}, ...receivedNode(r))],
       ['col.reporter', el('span', { text: r.reporter })],
       ['col.csOwner', el('span', { class: r.assignee ? '' : 'muted', text: r.assignee || t('common.unassigned') })],
       ['col.severity', el('span', { class: sk === 'normal' ? 'muted' : 'bold', text: L.severityLabel(sk, state.lang) + (ys ? ` · YouTrack ${ys.ids.join(', ')}` : '') })],
@@ -1529,7 +1469,7 @@
       ['col.tickets', el('span', { class: 'ticket-lines' }, ...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketLine) : [el('span', { class: 'muted small', text: t('common.none') })]))],
     ].flatMap(([k, v]) => [el('dt', { text: t(k) }), el('dd', {}, v)]);
     const history = f.timeline.length
-      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when }), el('span', { class: 'hist-dot' }), el('span', { text })); })
+      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text })); })
       : [el('li', { class: 'muted', text: t('detail.noHistory') })];
     const inList = allRows().some((x) => x.id === id);
     const openBtn = el('button', { type: 'button', class: 'btn xs', text: t('popup.openInDetail') });
@@ -1681,7 +1621,8 @@
         return b;
       }));
     });
-    syncSearchPlaceholder();
+    renderScope();
+    renderSortSelect();
     fillStaticSelects();
   }
   function setLang(lang) {
@@ -1694,7 +1635,7 @@
     renderBackfill();
     if (dialog.open) $('dialog-title').textContent = state.editing ? t('dialog.edit') : t('dialog.new');
     if (asgDialog.open) renderAsgItems();
-    if (signedInAs) requestTranslations([...state.rows, ...state.carry]);   // 새 언어 쪽 번역이 없는 건
+    if (signedInAs) requestTranslations(workingRows());   // 새 언어 쪽 번역이 없는 건
   }
 
   applyStaticText();

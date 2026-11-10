@@ -19,15 +19,14 @@ test('statusLabel: 메모 우선, 없으면 기본 라벨', () => {
   assert.equal(L.statusLabel(row({ status: 'deploy' })), '배포대기');
 });
 
-test('STATUS: 순서는 처리 중 → 대기 → 지연 → 배포대기 → 완료 → 원인 미확인, 색은 서로 다름', () => {
+test('STATUS: 순서는 처리 중 → 대기 → 지연 → 배포대기 → 완료 → 원인 미확인', () => {
   assert.deepEqual(Object.keys(L.STATUS), ['open', 'waiting', 'delayed', 'deploy', 'done', 'unknown']);
-  assert.equal(new Set(Object.values(L.STATUS).map((s) => s.color)).size, 6);
 });
 
-test('statusColor', () => {
+test('statusColor: 색은 처리 중(파랑) · 완료(초록)에만, 나머지는 회색', () => {
   assert.equal(L.statusColor(row({ status: 'done' })), '#15803D');
-  assert.equal(L.statusColor(row({ status: 'unknown' })), '#6B7280');
-  assert.equal(L.statusColor(row()), '#B45309');
+  assert.equal(L.statusColor(row()), '#2563EB');
+  ['waiting', 'delayed', 'deploy', 'unknown'].forEach((s) => assert.equal(L.statusColor(row({ status: s })), '#6B7280'));
 });
 
 test('splitTimeline: 접두 날짜 분리', () => {
@@ -137,16 +136,16 @@ test('ticketState: 안 끝난 첫 티켓, 모두 끝났으면 첫 티켓, 여러
   assert.deepEqual([d.label, d.color, d.allResolved], ['Done', '#15803D', true]);
 });
 
-test('ytStateColor', () => {
+test('ytStateColor: 해결 초록, 진행·테스트 파랑, 그 외(반려·막힘·대기) 회색', () => {
   assert.equal(L.ytStateColor({ state: 'Rejected', resolved: true }), '#6B7280');
-  assert.equal(L.ytStateColor({ state: '개발중 (Blocked)', resolved: false }), '#B91C1C');
-  assert.equal(L.ytStateColor({ state: 'Code Review', resolved: false }), '#7C3AED');
-  assert.equal(L.ytStateColor({ state: 'In Progress', resolved: false }), '#B45309');
-  assert.equal(L.ytStateColor({ state: 'Backlog', resolved: false }), '#1D4ED8');
+  assert.equal(L.ytStateColor({ state: '개발중 (Blocked)', resolved: false }), '#6B7280');
+  assert.equal(L.ytStateColor({ state: 'Code Review', resolved: false }), '#2563EB');
+  assert.equal(L.ytStateColor({ state: 'In Progress', resolved: false }), '#2563EB');
+  assert.equal(L.ytStateColor({ state: 'Backlog', resolved: false }), '#6B7280');
   // Jira
   assert.equal(L.ytStateColor({ state: '해결', resolved: true }), '#15803D');
   assert.equal(L.ytStateColor({ state: '진행 불가 (재현X)', resolved: true }), '#6B7280');
-  assert.equal(L.ytStateColor({ state: '원인 분석중', resolved: false }), '#B45309');
+  assert.equal(L.ytStateColor({ state: '원인 분석중', resolved: false }), '#2563EB');
 });
 
 test('assigneeLine·matchesSearch: YouTrack 값 반영', () => {
@@ -365,4 +364,61 @@ test('popupPlace: 새 팝업은 계단식으로 비켜 열리고 화면 밖으�
 test('popupBig: 머리글 두 번 클릭 시 크게 보기 크기 (가운데, 최대 760×85%, 여백 16)', () => {
   assert.deepEqual(L.popupBig(1600, 900), { x: 420, y: 68, w: 760, h: 765 });
   assert.deepEqual(L.popupBig(600, 500), { x: 16, y: 38, w: 568, h: 425 });
+});
+
+// ── UX 1차: 보기 · 정렬 · 경과 · 작은 오류
+const NOW = Date.parse('2026-11-10T12:00:00+09:00');
+const R = [
+  row({ id: 'n1', received_at: '2026-11-08T10:00:00+09:00', status: 'open', severity: 'normal' }),
+  row({ id: 'c1', received_at: '2026-10-12T10:00:00+09:00', status: 'deploy', severity: 'normal' }),
+  row({ id: 'h1', received_at: '2026-11-09T10:00:00+09:00', status: 'waiting', severity: 'hotfix' }),
+  row({ id: 'd1', received_at: '2026-10-20T10:00:00+09:00', status: 'done', severity: 'critical' }),
+  row({ id: 'l1', received_at: '2026-11-01T10:00:00+09:00', status: 'delayed', severity: 'normal' }),
+  row({ id: 's1', received_at: '2026-09-30T16:00:00+09:00', status: 'open', severity: 'major' }),
+];
+const ids = (rows) => rows.map((r) => r.id);
+
+test('viewRows: 미해결(모든 달) · 이월(이번 달 전 접수 미해결) · 완료 · 전체', () => {
+  assert.deepEqual(ids(L.viewRows(R, 'open', '2026-11')), ['n1', 'c1', 'h1', 'l1', 's1']);
+  assert.deepEqual(ids(L.viewRows(R, 'carry', '2026-11')), ['c1', 's1']);
+  assert.deepEqual(ids(L.viewRows(R, 'done', '2026-11')), ['d1']);
+  assert.deepEqual(ids(L.viewRows(R, 'all', '2026-11')), ids(R));
+  assert.deepEqual(ids(L.viewRows(R, 'weird', '2026-11')), ids(L.viewRows(R, 'open', '2026-11')));
+});
+
+test('isCarried: 이번 달(KST) 전에 접수됐고 완료가 아니면 이월', () => {
+  assert.equal(L.isCarried(R[1], '2026-11'), true);
+  assert.equal(L.isCarried(R[0], '2026-11'), false);
+  assert.equal(L.isCarried(R[3], '2026-11'), false);   // 완료
+  assert.equal(L.isCarried(row({ received_at: '2026-10-31T15:30:00Z' }), '2026-11'), false);   // KST 11-01
+});
+
+test('sortRows: 급한 순 = 심각도 → 지연 상태 → 오래된 순, 오래된 순, 최근 접수 순', () => {
+  assert.deepEqual(ids(L.sortRows(R, 'urgent', {})), ['h1', 'd1', 's1', 'l1', 'c1', 'n1']);
+  assert.deepEqual(ids(L.sortRows(R, 'oldest', {})), ['s1', 'c1', 'd1', 'l1', 'n1', 'h1']);
+  assert.deepEqual(ids(L.sortRows(R, 'recent', {})), ['h1', 'n1', 'l1', 'd1', 'c1', 's1']);
+  assert.deepEqual(ids(R), ['n1', 'c1', 'h1', 'd1', 'l1', 's1']);   // 원본은 그대로
+});
+
+test('ageInfo: 완료 전이면 경과일, 7일 이상은 지연(overdue), 완료면 null', () => {
+  assert.deepEqual(L.ageInfo(R[0], NOW), { days: 2, overdue: false });
+  assert.deepEqual(L.ageInfo(row({ received_at: '2026-11-03T12:00:00+09:00' }), NOW), { days: 7, overdue: true });
+  assert.deepEqual(L.ageInfo(R[1], NOW), { days: 29, overdue: true });
+  assert.equal(L.ageInfo(R[3], NOW), null);
+  assert.equal(L.OVERDUE_DAYS, 7);
+});
+
+test('plainVersion: 앞의 v 는 떼고 저장 (vv2.1.6 방지)', () => {
+  assert.equal(L.plainVersion('v2.1.6'), '2.1.6');
+  assert.equal(L.plainVersion(' V3.19.61 '), '3.19.61');
+  assert.equal(L.plainVersion('2.1.6'), '2.1.6');
+  assert.equal(L.plainVersion('vNext'), 'vNext');   // 숫자가 아니면 그대로
+  assert.equal(L.plainVersion(''), '');
+});
+
+test('datedEntry: 날짜가 없는 처리 이력은 오늘 날짜를 붙인다', () => {
+  assert.equal(L.datedEntry('로그 요청', NOW), '11/10 로그 요청');
+  assert.equal(L.datedEntry('11/04 로그 요청', NOW), '11/04 로그 요청');
+  assert.equal(L.datedEntry('11-04 접수', NOW), '11-04 접수');
+  assert.equal(L.datedEntry('  ', NOW), '');
 });

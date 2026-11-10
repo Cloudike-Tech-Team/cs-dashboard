@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261109-1">
-  <link rel="stylesheet" href="css/style.css?v=20261109-1">
+  <meta name="app-version" content="20261110-1">
+  <link rel="stylesheet" href="css/style.css?v=20261110-1">
 </head>
 <body>
   <!-- 로그인 -->
@@ -40,22 +40,11 @@
 
     <div class="toolbar">
       <div class="toolbar-left">
-        <button id="prev-month" class="btn icon" type="button" aria-label="이전 달" data-i18n-aria="aria.prevMonth">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
-        </button>
-        <span id="month-label" class="month-label mono"></span>
-        <button id="next-month" class="btn icon" type="button" aria-label="다음 달" data-i18n-aria="aria.nextMonth">
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
-        </button>
-        <button id="this-month" class="btn" type="button" data-i18n="btn.thisMonth">이번 달</button>
-        <span class="vsep"></span>
         <label class="search">
           <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-          <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓">
+          <input id="search-input" type="search" placeholder="고객사 · 현상 · 티켓" data-i18n-placeholder="search.placeholder">
         </label>
-        <label class="search-all" title="켜면 이 달이 아니라 모든 달의 CS에서 검색합니다" data-i18n-title="search.allTitle">
-          <input id="search-all" type="checkbox"> <span data-i18n="search.all">전체 기간</span>
-        </label>
+        <select id="search-scope" class="scope-select" aria-label="검색 범위" data-i18n-aria="scope.aria"></select>
       </div>
       <div class="toolbar-right">
         <button id="export-btn" class="btn" type="button" data-i18n="btn.export">CSV 내보내기</button>
@@ -72,18 +61,18 @@
             <circle class="ring-track" cx="18" cy="18" r="15.5"></circle>
             <g id="kpi-ring-segs"></g>
           </svg>
-          <span class="ring-center"><span id="kpi-total" class="kpi-value mono">0</span><span class="kpi-label" data-i18n="kpi.received">접수</span></span>
+          <span class="ring-center" title="위 숫자는 지금 보이는 목록 기준" data-i18n-title="kpi.listedTitle"><span id="kpi-total" class="kpi-value">0</span><span class="kpi-label" data-i18n="kpi.listed">목록</span></span>
         </button>
         <div id="kpi-legend" class="ring-legend" aria-label="상태별 건수 · 눌러서 필터" data-i18n-aria="kpi.legendAria"></div>
       </div>
-      <div class="kpi"><span class="kpi-label" data-i18n="kpi.open">미해결</span><span id="kpi-open" class="kpi-value mono c-open">0</span><span id="kpi-open-sub" class="kpi-sub muted"></span></div>
+      <div class="kpi"><span class="kpi-label" data-i18n="kpi.open">미해결</span><span id="kpi-open" class="kpi-value c-open">0</span><span id="kpi-open-sub" class="kpi-sub muted"></span></div>
       <div class="kpi kpi-sev">
         <span class="kpi-label" data-i18n="kpi.sev">심각도 · 미해결 기준</span>
         <div id="kpi-sev" class="sev-kpi" aria-label="심각도별 미해결 건수 · 눌러서 필터" data-i18n-aria="kpi.sevAria"></div>
       </div>
       <div class="kpi kpi-tickets">
         <span class="kpi-label" data-i18n="kpi.ticketed">티켓 연결</span>
-        <span class="kpi-value mono"><span id="kpi-ticketed">0</span> <span id="kpi-ticketed-of" class="kpi-of muted"></span></span>
+        <span class="kpi-value"><span id="kpi-ticketed">0</span> <span id="kpi-ticketed-of" class="kpi-of muted"></span></span>
         <span class="meter" aria-hidden="true"><span id="kpi-ticketed-bar"></span></span>
         <span id="kpi-ticketed-sub" class="kpi-sub muted"></span>
       </div>
@@ -92,6 +81,16 @@
     <div class="body">
       <!-- 요약 · 필터 -->
       <aside class="side" aria-label="월간 요약" data-i18n-aria="side.summary">
+        <div class="side-month" aria-label="요약 · 막대를 볼 달" data-i18n-aria="side.monthAria">
+          <button id="prev-month" class="btn icon xs" type="button" aria-label="이전 달" data-i18n-aria="aria.prevMonth">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <span id="month-label" class="month-label mono"></span>
+          <button id="next-month" class="btn icon xs" type="button" aria-label="다음 달" data-i18n-aria="aria.nextMonth">
+            <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+          <button id="this-month" class="btn xs" type="button" data-i18n="btn.thisMonth">이번 달</button>
+        </div>
         <div class="panel-head">
           <div class="panel-head-text">
             <strong data-i18n="side.summary">월간 요약</strong>
@@ -135,7 +134,11 @@
       <section class="list" aria-label="CS 목록" data-i18n-aria="list.aria">
         <div class="panel-head">
           <strong id="list-title"></strong>
-          <span class="muted small"><span data-i18n="list.hint">행을 누르면 오른쪽에 상세가 열립니다 · </span><button id="tickets-refresh" class="link-btn" type="button" title="티켓 담당·상태를 YouTrack·Jira 에서 다시 읽습니다" data-i18n-title="tickets.refreshTitle">티켓 새로고침</button></span>
+          <span class="muted small"><button id="tickets-refresh" class="link-btn" type="button" title="티켓 담당·상태를 YouTrack·Jira 에서 다시 읽습니다" data-i18n-title="tickets.refreshTitle">티켓 새로고침</button></span>
+        </div>
+        <div class="list-bar">
+          <div id="view-tabs" class="seg" role="group" aria-label="보기" data-i18n-aria="view.aria"></div>
+          <select id="sort-select" class="sort-select" aria-label="정렬" data-i18n-aria="sort.aria"></select>
         </div>
         <p id="list-error" class="error side-pad" hidden></p>
         <p id="tickets-error" class="error side-pad" hidden></p>
@@ -143,20 +146,6 @@
         <div class="list-head"><span data-i18n="col.received">접수</span><span data-i18n="col.customer">고객사</span><span data-i18n="col.device">기기</span><span data-i18n="col.severity">심각도</span><span data-i18n="col.issue">현상</span><span data-i18n="col.csOwner">CS 담당</span><span data-i18n="col.csStatus">CS 상태</span><span data-i18n="col.ticketOwner">티켓 담당</span><span data-i18n="col.ticketStatus">티켓 상태</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
-
-        <!-- 전체 기간 검색 결과: 켜져 있고 검색어가 있으면 월 목록·밀린 미해결 대신 보여 준다 -->
-        <div id="history-list" class="cs-list" hidden></div>
-        <p id="history-empty" class="empty" hidden></p>
-
-        <!-- 밀린 미해결: 이 달 목록과 섞이지 않게 아래에 별도 구역으로 -->
-        <details id="carry-box" class="carry-box" open hidden>
-          <summary class="panel-head carry-head">
-            <strong id="carry-title"></strong>
-            <span class="muted small" data-i18n="carry.hint">이 달 전에 접수돼 아직 완료되지 않은 CS · 완료될 때까지 매달 표시 · 완료로 바꾸면 다음 조회부터 빠집니다</span>
-          </summary>
-          <div class="list-head"><span data-i18n="col.received">접수</span><span data-i18n="col.customer">고객사</span><span data-i18n="col.device">기기</span><span data-i18n="col.severity">심각도</span><span data-i18n="col.issue">현상</span><span data-i18n="col.csOwner">CS 담당</span><span data-i18n="col.csStatus">CS 상태</span><span data-i18n="col.ticketOwner">티켓 담당</span><span data-i18n="col.ticketStatus">티켓 상태</span></div>
-          <div id="carry-list" class="cs-list"></div>
-        </details>
       </section>
 
       <!-- 상세 -->
@@ -178,9 +167,9 @@
             <div id="tr-bar" class="tr-bar" hidden><span id="tr-label"></span><button id="tr-toggle" class="link-btn" type="button"></button></div>
           </div>
           <dl class="meta">
-            <dt data-i18n="col.customer">고객사</dt><dd id="detail-customer" class="mono bold"></dd>
+            <dt data-i18n="col.customer">고객사</dt><dd id="detail-customer" class="bold"></dd>
             <dt data-i18n="col.device">기기</dt><dd id="detail-device"></dd>
-            <dt data-i18n="col.received">접수</dt><dd id="detail-received" class="mono"></dd>
+            <dt data-i18n="col.received">접수</dt><dd id="detail-received"></dd>
             <dt data-i18n="col.reporter">접수자</dt><dd id="detail-reporter"></dd>
             <dt data-i18n="col.csOwner">CS 담당</dt><dd id="detail-assignee"></dd>
             <dt data-i18n="col.severity">심각도</dt><dd id="detail-severity"></dd>
@@ -301,9 +290,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261109-1"></script>
-  <script src="js/i18n.js?v=20261109-1"></script>
-  <script src="js/lib.js?v=20261109-1"></script>
-  <script src="js/app.js?v=20261109-1"></script>
+  <script src="js/config.js?v=20261110-1"></script>
+  <script src="js/i18n.js?v=20261110-1"></script>
+  <script src="js/lib.js?v=20261110-1"></script>
+  <script src="js/app.js?v=20261110-1"></script>
 </body>
 </html>

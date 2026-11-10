@@ -52,9 +52,8 @@
     summary: null,             // 현재 월의 저장된 요약 행 (없으면 null)
     summaryBusy: false,        // 요약 생성 요청 진행 중
     summaryBusyMonth: null,    // 생성 중인 월 ('YYYY-MM'). 다른 달을 보고 있으면 "생성 중" 을 표시하지 않음
-    filter: null,              // null | { type: 'issue'|'device'|'assignee'|'status'|'severity', value }
+    filters: {},               // { severity: [], status: [], device: [], assignee: [], issue: [], age: ['overdue'] } — 종류 안 OR, 종류끼리 AND
     selected: null,            // 상세 패널에 열린 row id
-    quick: null,               // 상세 패널의 인라인 폼: null | 'status' | 'history'
     yt: {},                    // 트래커(YouTrack·Jira) 티켓 캐시 { 'NRF-1': { source, summary, state, resolved, assignees, url } | null(없음) }
     ytBusy: 0,                 // 진행 중인 티켓 조회 요청 수
     ytError: '',
@@ -155,7 +154,7 @@
       state.all = [];
       state.rows = [];
       state.selected = null;
-      state.filter = null;
+      state.filters = {};
       $('cs-list').replaceChildren();
     }
   }
@@ -187,7 +186,6 @@
     if (error) showError($('list-error'), t('list.loadFailed', { e: error.message }));
     state.all = error ? [] : data;
     deriveMonth();
-    state.quick = null;
     state.selected = opts.selected && state.all.some((r) => r.id === opts.selected) ? opts.selected : null;
     renderAll();
     loadSummary(seq);
@@ -203,7 +201,7 @@
     state.month = month;
     $('month-label').textContent = month;
     deriveMonth();
-    if (state.filter && state.filter.type === 'issue') state.filter = null;   // 이슈 번호는 달마다 다르다
+    delete state.filters.issue;   // 이슈 번호는 달마다 다르다
     if (state.scope === 'month') renderScope();
     renderAll();
     loadSummary(++state.loadSeq);
@@ -232,7 +230,7 @@
     }
     state.ytBusy--;
     renderYtStatus();
-    renderKpi();
+    renderCards();
     renderSidebar();
     renderList();
     renderDetail();
@@ -246,7 +244,7 @@
   $('tickets-refresh').addEventListener('click', () => loadTickets({ refresh: true, rows: [...new Set([...workingRows(), ...visibleRows().slice(0, 300)])] }));
 
   function renderAll() {
-    renderKpi();
+    renderCards();
     renderSidebar();
     renderList();
     renderDetail();
@@ -316,7 +314,7 @@
     if (state.view === v) return;
     state.view = v;
     saveListPrefs();
-    renderKpi();
+    renderCards();
     renderList();
     loadTickets({ rows: visibleRows().slice(0, 300) });   // 완료 · 전체 보기에서 처음 보이는 티켓
   }
@@ -329,7 +327,7 @@
     $('search-scope').replaceChildren(el('option', { value: 'all', text: t('scope.all') }), el('option', { value: 'month', text: t('scope.month', { month: state.month }) }));
     $('search-scope').value = state.scope;
   }
-  $('search-scope').addEventListener('change', () => { state.scope = $('search-scope').value; saveListPrefs(); renderKpi(); renderList(); });
+  $('search-scope').addEventListener('change', () => { state.scope = $('search-scope').value; saveListPrefs(); renderCards(); renderList(); });
 
   // 검색 결과에 보이는 티켓만 트래커에서 읽는다 (입력이 멈춘 뒤)
   let searchTicketTimer;
@@ -343,7 +341,7 @@
   function filteredRows(rows = state.rows) {
     const q = $('search-input').value;
     const issues = summaryView().issues;
-    return L.applyFilter(rows, state.filter, issues, state.yt).filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r)));
+    return L.applyFilters(rows, state.filters, issues, state.yt).filter((r) => L.matchesSearch(r, q, state.yt, trTexts(r)));
   }
 
   // 버전은 v 없이 저장하고 여기서 한 번만 붙인다 (예전에 v 를 넣어 저장한 값도 vv 가 되지 않게)
@@ -361,29 +359,14 @@
       : el('span', { class: 'chip', text: t });
   }
 
-  // 상세의 티켓 한 줄: 칩(링크) · 상태 · 담당 · 제목
-  function ticketLine({ raw, id, yt }) {
-    if (!yt) {
-      const hint = !id ? '' : id in state.yt ? t('tickets.notInTracker') : state.ytBusy ? t('list.loading') : '';
-      return el('div', { class: 'ticket-line' }, ticketNode(raw), hint ? el('span', { class: 'muted small', text: hint }) : null);
-    }
-    const st = el('span', { class: 'status-inline', text: yt.state || t('tickets.noState') });
-    st.style.setProperty('--c', L.ytStateColor(yt));
-    return el('div', { class: 'ticket-line', title: yt.summary },
-      isSafeUrl(raw) ? ticketNode(raw) : el('a', { class: 'chip', href: yt.url, target: '_blank', rel: 'noopener noreferrer', text: id }),
-      st,
-      el('span', { class: 'small' + (yt.assignees.length ? '' : ' muted'), text: yt.assignees.join(', ') || t('tickets.noOwner') }),
-      el('span', { class: 'ticket-summary muted small', text: yt.summary }));
-  }
-
-  function filterName() {
-    const f = state.filter;
-    if (!f) return '';
-    if (f.type === 'device') return L.deviceLabel(f.value, state.lang);
-    if (f.type === 'status') return L.STATUS[f.value] ? L.statusName(f.value, state.lang) : f.value;
-    if (f.type === 'severity') return L.SEVERITY[f.value] ? t('filter.severity', { label: L.severityLabel(f.value, state.lang) }) : f.value;
-    if (f.type === 'assignee') return f.value ? t('filter.owner', { name: f.value }) : t('filter.unassigned');
-    const issue = summaryView().issues[f.value];
+  // 필터 값 하나의 화면 이름
+  function filterValueName(type, v) {
+    if (type === 'device') return L.deviceLabel(v, state.lang);
+    if (type === 'status') return L.statusName(v, state.lang);
+    if (type === 'severity') return L.severityLabel(v, state.lang);
+    if (type === 'assignee') return v || t('common.unassigned');
+    if (type === 'age') return t('fchip.age');
+    const issue = summaryView().issues[v];
     return issue ? issue.label : '';
   }
 
@@ -407,7 +390,7 @@
     return b;
   }
 
-  // 한 줄 행: 접수일 | 고객사 | 기기 | 심각도 | 제목 + 경과 · 이월 · 티켓 수 | CS 담당 | CS 상태 | 티켓 담당 | 티켓 상태.
+  // 행: 현상(굵게) + 아래 줄 고객사 · 기기 · 꼬리표 | CS 상태 | CS 담당 | 티켓(번호 · 트래커 상태 · 개발 담당) | 접수일 · 경과.
   // 왼쪽 띠 색 = 심각도 (보통은 없음). 올해가 아닌 건은 접수일에 연도(YY-MM-DD).
   function rowNode(r) {
     const p = kstParts(new Date(r.received_at));
@@ -416,30 +399,50 @@
     const f = disp(r);
     const sk = L.severityOf(r, state.yt);
     const carried = L.isCarried(r, currentMonthKST());
+    const mm = L.mismatch(r, state.yt);
+    const age = ageNode(r);
     const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (state.selected === r.id ? ' active' : '') + (sk !== 'normal' ? ' sev' : '') },
-      el('span', { class: 'col-when mono', text: when, title: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` }),
-      el('span', { class: 'col-who', text: r.customer, title: r.customer }),
-      el('span', { class: 'col-device muted', text: deviceLine(r), title: deviceLine(r) }),
-      el('span', { class: 'col-sev' }, sevBadge(r)),
-      el('span', { class: 'col-what' },
-        el('span', { class: 'row-title', text: f.title || t('list.noTitle'), title: f.title || '' }),
-        ageNode(r),
-        carried ? el('span', { class: 'row-tag', text: t('tag.carry'), title: t('tag.carryTitle') }) : null,
-        r.tickets.length ? el('span', { class: 'row-ticket mono muted', text: `T${r.tickets.length}`, title: t('list.ticketCount', { n: r.tickets.length }) }) : null),
+      el('span', { class: 'col-main' },
+        el('span', { class: 'line1' }, sk !== 'normal' ? sevBadge(r) : null, el('span', { class: 'row-title', text: f.title || t('list.noTitle'), title: f.title || '' })),
+        el('span', { class: 'line2' },
+          el('span', { class: 'who', text: r.customer, title: r.customer }),
+          el('span', { class: 'dev', text: deviceLine(r) }),
+          age ? el('span', { class: 'age-inline' }, ageNode(r)) : null,
+          carried ? el('span', { class: 'row-tag', text: t('tag.carry'), title: t('tag.carryTitle') }) : null,
+          f.status_note ? el('span', { class: 'row-tag note', text: f.status_note }) : null,
+          mm ? el('span', { class: 'row-tag warn', text: t(`mm.${mm}`), title: t(`mm.${mm}Title`) }) : null)),
+      el('span', { class: 'col-status' }, statusPill(r)),
       // 담당이 없는 미해결은 눈에 띄게
       el('span', { class: 'col-asg' + (r.assignee ? '' : r.status === 'done' ? ' none' : ' none warn'), text: r.assignee || t('common.unassigned'), title: L.assigneeLine(r, state.yt, state.lang) }),
-      // 목록에는 기본 상태만. 상태 메모(긴 설명)는 상세에서 보여 준다
-      el('span', { class: 'col-status', title: f.status_note || '' }, el('span', { class: 'dot' }), el('span', { text: L.statusName(r.status, state.lang) })),
-      ticketAsgNode(r, 'col-tasg'),
-      ticketStateNode(r),
+      ticketCell(r),
+      el('span', { class: 'col-when', title: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` },
+        el('span', { class: 'mono', text: when }), age),
     );
-    b.style.setProperty('--c', L.statusColor(r));
     b.style.setProperty('--s', L.SEVERITY[sk].color);
     b.addEventListener('click', () => selectRow(r.id));
     b.addEventListener('keydown', (e) => {
       if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectRow(r.id); }
     });
     return b;
+  }
+  function statusPill(r) {
+    const n = el('span', { class: 'st-pill', text: L.statusName(r.status, state.lang) });
+    n.style.setProperty('--c', L.statusColor(r));
+    return n;
+  }
+  // 목록의 티켓 칸: 「NRF-4771 외 1」 + 트래커 상태 · 개발 담당
+  function ticketCell(r) {
+    if (!r.tickets.length) return el('span', { class: 'col-ticket none', text: '—' });
+    const infos = L.ticketInfos(r, state.yt);
+    const first = infos[0].id || shortTicket(infos[0].raw);
+    const more = infos.length > 1 ? (state.lang === 'en' ? ` +${infos.length - 1}` : ` 외 ${infos.length - 1}`) : '';
+    const s = L.ticketState(r, state.yt, state.lang);
+    const ta = L.ticketAssignees(r, state.yt);
+    const st = s ? el('span', { class: 'tk-state', text: s.label.replace(/ (외 |\+)\d+$/, ''), title: s.title }) : el('span', { class: 'tk-state none', text: state.ytBusy ? '…' : t('list.unknownState') });
+    if (s) st.style.setProperty('--c', s.color);
+    return el('span', { class: 'col-ticket' },
+      el('span', { class: 'mono tk-id', text: first + more }),
+      el('span', { class: 'line2' }, st, ta.names.length ? el('span', { class: 'muted', text: ta.names.join(', '), title: ta.manual ? t('list.manual', { text: ta.names.join(', ') }) : '' }) : null));
   }
 
   function ticketAsgNode(r, cls) {
@@ -468,8 +471,8 @@
       ])
       : rows.map((r) => rowNode(r))));
     const view = t(`view.${state.view}`);
-    $('list-title').textContent = (rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length }))
-      + (state.filter ? t('list.filterOn', { name: filterName() }) : '');
+    $('list-title').textContent = rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length });
+    renderFilterChips();
     const err = !!$('list-error').textContent;
     $('empty').hidden = rows.length > 0 || err || state.loading;
     $('empty').textContent = base.length > 0 ? t('list.emptyFiltered') : t('list.emptyView');
@@ -477,7 +480,6 @@
 
   function selectRow(id) {
     state.selected = state.selected === id ? null : id;
-    state.quick = null;
     state.showOriginal = false;
     renderList();
     renderDetail();
@@ -493,122 +495,151 @@
     const r = selectedRow();
     $('detail').hidden = !r;
     if (!r) return;
-    $('detail-when').textContent = fmtDateTime(r.received_at);
-    // 번역본이 있으면 번역을 보여 주고, 「원문 보기」를 누르면 원문
+    $('detail-when').textContent = `${fmtDateTime(r.received_at)} · ${r.customer}`;
+    // 입력 중이던 칸(상태 메모 · 이력)은 다시 그려도 값과 포커스를 지킨다
+    const body = $('detail-body');
+    const keep = keptInputs(body, r.id);
+    body.replaceChildren(...csBody(r, { full: true }));
+    restoreInputs(body, keep);
+  }
+
+  // 다시 그리기 전에 같은 CS 에서 고쳐 쓰던 칸(저장 전)만 기억했다가 되돌린다
+  function keptInputs(box, rowId) {
+    return [...box.querySelectorAll('input[data-keep]')]
+      .filter((i) => i.dataset.rowId === rowId && i.value !== i.dataset.orig)
+      .map((i) => [i.dataset.keep, i.value, document.activeElement === i]);
+  }
+  function restoreInputs(box, keep) {
+    keep.forEach(([k, v, focused]) => {
+      const i = box.querySelector(`input[data-keep="${k}"]`);
+      if (i) { i.value = v; if (focused) i.focus(); }
+    });
+  }
+
+  // 상세 서랍 · 팝업 공통 본문. full: 상세(전부) / 아니면 팝업(조금 짧게)
+  function csBody(r, { full }) {
     const shown = disp(r);
-    const f = state.showOriginal && shown.translated ? L.displayFields(r, null, null, state.lang) : shown;
-    $('tr-bar').hidden = !shown.translated;
-    if (shown.translated) {
-      const src = t(L.hasHangul(r) ? 'lang.ko' : 'lang.en');
-      $('tr-label').textContent = state.showOriginal ? t('tr.original', { lang: src }) : t('tr.from', { lang: src });
-      $('tr-toggle').textContent = state.showOriginal ? t('tr.showTranslation') : t('tr.showOriginal');
-    }
-    $('detail-status').textContent = L.statusLabel(r, state.lang, f);
-    $('detail-status').style.setProperty('--c', L.statusColor(r));
+    const f = full && state.showOriginal && shown.translated ? L.displayFields(r, null, null, state.lang) : shown;
     const ys = L.ytSeverity(r, state.yt);
     const sk = ys ? ys.key : L.severityKey(r);
-    $('detail-severity-pill').hidden = sk === 'normal';
-    $('detail-severity-pill').textContent = L.severityLabel(sk, state.lang);
-    $('detail-severity-pill').style.setProperty('--s', L.SEVERITY[sk].color);
-    $('detail-severity').replaceChildren(el('span', { text: L.severityLabel(sk, state.lang) }),
-      ...(ys ? [el('span', { class: 'muted small yt-src', text: ` · YouTrack ${ys.ids.join(', ')}`, title: t('sev.fromYt', { ids: ys.ids.join(', ') }) })] : []));
-    $('detail-severity').className = sk === 'normal' ? 'muted' : 'bold';
-    $('detail-title').textContent = f.title || t('list.noTitle');
-    $('detail-customer').textContent = r.customer;
-    $('detail-device').textContent = deviceLine(r);
-    $('detail-received').replaceChildren(...receivedNode(r));
-    $('detail-reporter').textContent = r.reporter;
-    $('detail-assignee').textContent = r.assignee || t('common.unassigned');
-    $('detail-assignee').className = r.assignee ? '' : 'muted';
-    const cs = el('span', { class: 'status-inline', text: L.statusLabel(r, state.lang, f) });
-    cs.style.setProperty('--c', L.statusColor(r));
-    $('detail-cs-status').replaceChildren(cs);
+    const err = el('p', { class: 'error', hidden: '' });
+    const save = (patch, box) => saveRow(r, patch, err, box);
+    const nodes = [];
+
+    // 머리: 심각도 · 제목 · 번역 · 고객사 · 기기 · 접수
+    const head = el('div', { class: 'd-head' });
+    if (sk !== 'normal') head.append(sevBadge(r));
+    head.append(el('h2', { class: 'detail-title', text: f.title || t('list.noTitle') }));
+    if (shown.translated) {
+      const src = t(L.hasHangul(r) ? 'lang.ko' : 'lang.en');
+      const bar = el('div', { class: 'tr-bar' }, el('span', { text: full && state.showOriginal ? t('tr.original', { lang: src }) : t('tr.from', { lang: src }) }));
+      if (full) {
+        const tg = el('button', { type: 'button', class: 'link-btn', text: state.showOriginal ? t('tr.showTranslation') : t('tr.showOriginal') });
+        tg.addEventListener('click', () => { state.showOriginal = !state.showOriginal; renderDetail(); });
+        bar.append(tg);
+      }
+      head.append(bar);
+    }
+    head.append(el('p', { class: 'd-sub' }, el('b', { text: r.customer }), ' · ', deviceLine(r), ' · ', ...receivedNode(r)));
+    nodes.push(head);
+
+    // 상태 버튼 줄: 한 번 누르면 바로 저장 (상태를 바꾸면 이전 상태의 메모는 비운다)
+    const stBox = el('div', { class: 'd-status' });
+    const stRow = el('div', { class: 'st-buttons', role: 'group', 'aria-label': t('d.statusAria') }, ...Object.keys(L.STATUS).map((k) => {
+      const b = el('button', { type: 'button', class: 'st-btn' + (r.status === k ? ' on' : ''), 'aria-pressed': String(r.status === k), text: L.statusName(k, state.lang) });
+      b.style.setProperty('--c', L.STATUS[k].color);
+      b.addEventListener('click', () => { if (r.status !== k) save({ status: k, status_note: '' }, stBox); });
+      return b;
+    }));
+    const note = el('input', { type: 'text', maxlength: '50', placeholder: t('d.notePh'), 'data-keep': 'note', 'data-row-id': r.id, 'aria-label': t('f.statusNote') });
+    note.value = r.status_note;
+    note.dataset.orig = r.status_note;
+    note.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (note.value.trim() !== r.status_note) save({ status_note: note.value.trim() }, stBox); }
+    });
+    stBox.append(stRow, note);
+    nodes.push(stBox);
+
+    // 속성 4줄: CS 담당 · 심각도 · 티켓 담당 · 접수자
+    const asg = el('select', { 'aria-label': t('col.csOwner') });
+    fillAssigneeSelect(asg, r.assignee || '');
+    asg.addEventListener('change', () => save({ assignee: asg.value }, props));
+    const sev = el('select', { 'aria-label': t('col.severity') }, Object.keys(L.SEVERITY).map((k) => el('option', { value: k, text: L.severityLabel(k, state.lang) })));
+    sev.value = sk;
+    sev.disabled = !!ys;
+    sev.addEventListener('change', () => save({ severity: sev.value }, props));
+    // 티켓 담당: 트래커에서 읽은 티켓이 있으면 그 담당(없으면 미지정), 트래커에 없는 티켓일 때만 직접 입력
     const ta = L.ticketAssignees(r, state.yt);
-    $('detail-ticket-assignee').replaceChildren(
-      el('span', { text: ta.names.length ? ta.names.join(', ') : (r.tickets.length ? t('common.unassigned') : '—') }),
-      ...(ta.manual ? [el('span', { class: 'muted small', text: ' ' + t('list.manual', { text: '' }).trim() })] : []));
-    $('detail-ticket-assignee').className = ta.names.length ? '' : 'muted';
-    const ts = L.ticketState(r, state.yt, state.lang);
-    if (ts) {
-      const n = el('span', { class: 'status-inline', text: ts.label, title: ts.title });
-      n.style.setProperty('--c', ts.color);
-      $('detail-ticket-state').replaceChildren(n);
-    } else {
-      $('detail-ticket-state').replaceChildren(el('span', { class: 'muted', text: r.tickets.length ? (state.ytBusy ? t('list.loading') : t('list.unknownState')) : '—' }));
+    const inTracker = L.ticketInfos(r, state.yt).some((x) => x.yt);
+    let taNode;
+    if (inTracker) taNode = el('span', { class: ta.names.length ? '' : 'muted', text: ta.names.join(', ') || t('common.unassigned') });
+    else if (!r.tickets.length && !r.ticket_assignee) taNode = el('span', { class: 'muted', text: '—' });
+    else {
+      taNode = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: t('d.ticketOwnerPh'), 'aria-label': t('col.ticketOwner') });
+      taNode.value = r.ticket_assignee || '';
+      taNode.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); save({ ticket_assignee: taNode.value.trim() }, props); } });
     }
-    $('detail-tickets').replaceChildren(...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketLine) : [el('span', { class: 'muted small', text: t('common.none') })]));
-    $('detail-desc').textContent = f.description || '—';
-    $('detail-history').replaceChildren(...(f.timeline.length
-      ? f.timeline.map((entry) => {
-          const { when, text } = L.splitTimeline(entry);
-          return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text }));
-        })
+    const props = el('dl', { class: 'meta' },
+      el('dt', { text: t('col.csOwner') }), el('dd', {}, asg),
+      el('dt', { text: t('col.severity') }), el('dd', {}, sev, ys ? el('span', { class: 'muted small sev-yt', text: t('sev.fromYt', { ids: ys.ids.join(', ') }) }) : null),
+      el('dt', { text: t('col.ticketOwner') }), el('dd', {}, taNode),
+      ...(full ? [el('dt', { text: t('col.reporter') }), el('dd', { text: r.reporter })] : []));
+    nodes.push(props);
+
+    const mm = L.mismatch(r, state.yt);
+    if (mm) nodes.push(el('p', { class: 'mm-warn', text: t(`mm.${mm}Title`) }));
+
+    // 티켓 카드
+    nodes.push(el('div', { class: 'detail-section' }, el('h3', { text: t('col.tickets') }),
+      ...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketCard) : [el('p', { class: 'muted small', text: t('d.noTickets') })])));
+    nodes.push(el('div', { class: 'detail-section' }, el('h3', { text: t('detail.desc') }), el('p', { class: 'detail-desc', text: f.description || '—' })));
+    if (f.notes) nodes.push(el('div', { class: 'detail-section' }, el('h3', { text: t('side.notes') }), el('p', { class: 'detail-desc', text: f.notes })));
+
+    // 처리 이력 + 한 줄 추가 (날짜가 없으면 오늘 날짜를 붙인다)
+    const hist = el('ol', { class: 'history' }, ...(f.timeline.length
+      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text })); })
       : [el('li', { class: 'muted', text: t('detail.noHistory') })]));
-    showError($('detail-error'), '');
-    renderQuick(r);
-  }
+    const add = el('input', { type: 'text', maxlength: '2000', placeholder: t('d.historyPh'), 'data-keep': 'hist', 'data-row-id': r.id, 'data-orig': '', 'aria-label': t('btn.history') });
+    const histBox = el('div', { class: 'detail-section' }, el('h3', { text: t('detail.history') }), hist, add);
+    add.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      const entry = add.value.trim();
+      if (!entry) return;
+      save({ timeline: [...r.timeline, L.datedEntry(entry)] }, histBox);
+    });
+    nodes.push(histBox, err);
 
-  function renderQuick(r) {
-    const box = $('quick-box');
-    box.replaceChildren();
-    ['status-btn', 'history-btn', 'assignee-btn', 'edit-btn'].forEach((id) => { $(id).disabled = !!state.quick || state.busy; });
-    if (state.quick === 'status') {
-      const sel = el('select', { 'aria-label': t('q.status') },
-        Object.keys(L.STATUS).map((k) => el('option', { value: k, text: L.statusName(k, state.lang) })));
-      sel.value = r.status;
-      const sev = el('select', { 'aria-label': t('q.severity') },
-        Object.keys(L.SEVERITY).map((k) => el('option', { value: k, text: t('q.sevOption', { label: L.severityLabel(k, state.lang) }) })));
-      const ysq = L.ytSeverity(r, state.yt);
-      sev.value = ysq ? ysq.key : L.severityKey(r);
-      if (ysq) { sev.disabled = true; sev.title = t('sev.fromYt', { ids: ysq.ids.join(', ') }); }
-      const note = el('input', { type: 'text', maxlength: '50', placeholder: t('q.notePh') });
-      note.value = r.status_note;
-      // 상태를 바꾸면 이전 상태의 메모("로그 대기")가 새 상태의 라벨로 남지 않게 비운다
-      sel.addEventListener('change', () => { note.value = sel.value === r.status ? r.status_note : ''; });
-      // YouTrack 값으로 잠긴 심각도는 저장하지 않는다 (콘솔에 저장된 값은 그대로)
-      const submit = () => saveQuick(r, { status: sel.value, ...(sev.disabled ? {} : { severity: sev.value }), status_note: note.value.trim() });
-      note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
-      box.append(el('div', { class: 'quick-form' }, sel, sev, note, quickButtons(submit)));
-      sel.focus();
-    } else if (state.quick === 'history') {
-      const input = el('input', { type: 'text', maxlength: '2000', placeholder: t('q.historyPh') });
-      const p = kstParts(new Date());
-      input.value = `${p.month}/${p.day} `;
-      const submit = () => {
-        const entry = input.value.trim();
-        if (!entry || /^\d{1,2}\/\d{1,2}$/.test(entry)) { showError($('detail-error'), t('q.historyEmpty')); input.focus(); return; }
-        saveQuick(r, { timeline: [...r.timeline, L.datedEntry(entry)] });
-      };
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } });
-      box.append(el('div', { class: 'quick-form' }, input, quickButtons(submit)));
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    } else if (state.quick === 'assignee') {
-      const a = el('select', { 'aria-label': t('col.csOwner') });
-      fillAssigneeSelect(a, r.assignee || '');
-      const ta = el('input', { type: 'text', maxlength: '100', list: 'assignee-names', placeholder: t('q.ticketOwnerPh') });
-      ta.value = r.ticket_assignee || '';
-      const submit = () => saveQuick(r, { assignee: a.value.trim(), ticket_assignee: ta.value.trim() });
-      [ta].forEach((i) => i.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); } }));
-      box.append(el('div', { class: 'quick-form' }, a, ta, quickButtons(submit)));
-      a.focus();
+    if (full) {
+      const edit = el('button', { type: 'button', class: 'btn', text: t('d.fullEdit') });
+      edit.addEventListener('click', () => openDialog(r));
+      nodes.push(el('div', { class: 'd-foot' }, el('span', { class: 'muted small', text: t('dialog.meta', { created: fmtDateTime(r.created_at), updated: fmtDateTime(r.updated_at) }) }), edit));
     }
+    return nodes;
   }
 
-  function quickButtons(onSave) {
-    const save = el('button', { type: 'button', class: 'btn primary small', text: t('btn.save') });
-    save.addEventListener('click', onSave);
-    const cancel = el('button', { type: 'button', class: 'btn small', text: t('btn.cancel') });
-    cancel.addEventListener('click', () => { state.quick = null; renderDetail(); });
-    return el('div', { class: 'quick-actions' }, save, cancel);
+  // 상세의 티켓 카드: 번호(링크) · 상태 · 개발 담당 · 요약
+  function ticketCard(info) {
+    const { raw, id, yt } = info;
+    const link = isSafeUrl(raw) ? ticketNode(raw) : yt ? el('a', { class: 'chip', href: yt.url, target: '_blank', rel: 'noopener noreferrer', text: id }) : ticketNode(raw);
+    if (!yt) {
+      const hint = !id ? '' : id in state.yt ? t('tickets.notInTracker') : state.ytBusy ? t('list.loading') : '';
+      return el('div', { class: 'tk-card' }, el('div', { class: 'tk-top' }, link, hint ? el('span', { class: 'muted small', text: hint }) : null));
+    }
+    const st = el('span', { class: 'tk-state', text: yt.state || t('tickets.noState') });
+    st.style.setProperty('--c', L.ytStateColor(yt));
+    return el('div', { class: 'tk-card' },
+      el('div', { class: 'tk-top' }, link, st),
+      el('div', { class: 'small' + (yt.assignees.length ? '' : ' muted'), text: yt.assignees.join(', ') || t('tickets.noOwner') }),
+      yt.summary ? el('div', { class: 'muted small tk-sum', text: yt.summary }) : null);
   }
 
-  // 상세 패널에서 한 필드만 고치는 저장. 수정 모달과 같은 낙관적 잠금.
-  async function saveQuick(r, patch) {
+  // 상세 · 팝업에서 바로 저장 (수정 창과 같은 낙관적 잠금). box 안 입력은 저장하는 동안 잠근다
+  async function saveRow(r, patch, errNode, box) {
     if (state.busy) return;
     state.busy = true;
-    showError($('detail-error'), '');
-    const controls = [...$('quick-box').querySelectorAll('button, input, select')];
+    showError(errNode, '');
+    const controls = box ? [...box.querySelectorAll('button, input, select')] : [];
     controls.forEach((n) => { n.disabled = true; });
     const { data, error } = await sb.from('cs_tickets').update(patch)
       .eq('id', r.id)
@@ -617,90 +648,128 @@
     state.busy = false;
     if (error || data.length === 0) {
       controls.forEach((n) => { n.disabled = false; });
-      showError($('detail-error'), error ? t('save.failed', { e: error.message }) : t('conflict'));
+      showError(errNode, error ? t('save.failed', { e: error.message }) : t('conflict'));
       return;
     }
     replaceRow(data[0]);
-    state.quick = null;
     toast(t('save.done'));
     rememberNames([data[0].assignee, data[0].ticket_assignee]);
     renderAll();
     loadTranslations([data[0]]);   // 상태 메모·이력이 바뀌었으면 다시 번역
   }
 
-  $('status-btn').addEventListener('click', () => { state.quick = 'status'; renderDetail(); });
-  $('history-btn').addEventListener('click', () => { state.quick = 'history'; renderDetail(); });
-  $('assignee-btn').addEventListener('click', () => { state.quick = 'assignee'; renderDetail(); });
-  $('edit-btn').addEventListener('click', () => { const r = selectedRow(); if (r) openDialog(r); });
-  function closeDetail() { state.selected = null; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); }
+  function closeDetail() { state.selected = null; state.showOriginal = false; renderList(); renderDetail(); }
   $('detail-close').addEventListener('click', closeDetail);
   $('detail-popup').addEventListener('click', () => { if (state.selected) openPopup(state.selected); });
-  $('tr-toggle').addEventListener('click', () => { state.showOriginal = !state.showOriginal; renderDetail(); });
 
   // ───────────── KPI · 사이드바 ─────────────
-  // 위쪽 집계는 지금 보이는 목록(보기 · 필터 · 검색) 기준
-  function renderKpi() {
-    const vis = visibleRows();
-    const k = L.kpi(vis);
-    $('kpi-total').textContent = String(k.total);
-    $('kpi-open').textContent = String(k.open);
-    const carryOpen = vis.filter((r) => L.isCarried(r, currentMonthKST())).length;
-    $('kpi-open-sub').textContent = [k.total && k.open !== k.total ? t('kpi.openShare', { p: Math.round((k.open / k.total) * 100) }) : '', carryOpen ? t('kpi.carryOpen', { n: carryOpen }) : '']
-      .filter(Boolean).join(' · ');
-    $('kpi-ticketed').textContent = String(k.ticketed);
-    $('kpi-ticketed-of').textContent = `/ ${k.total}`;
-    $('kpi-ticketed-sub').textContent = k.total ? t('kpi.noTicket', { n: k.total - k.ticketed }) : '';
-    // 원형 그래프: 필터가 걸려 있으면 눌러서 해제
-    $('kpi-ring-btn').classList.toggle('can-clear', !!state.filter);
-    $('kpi-ring-btn').title = state.filter ? t('kpi.ringClear') : '';
-    $('kpi-ring-btn').setAttribute('aria-label', state.filter ? t('kpi.ringClear') : t('kpi.ringTitle'));
-    $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
-
-    // 심각도: 보이는 목록의 미해결 중 중요·크리티컬·핫픽스 (급한 순). 누르면 심각도 필터
-    const urgent = ['hotfix', 'critical', 'major'];
-    $('kpi-sev').replaceChildren(...urgent.map((key) => {
-      const n = vis.filter((r) => r.status !== 'done' && L.severityOf(r, state.yt) === key).length;
-      const b = el('button', { type: 'button', class: 'legend-btn sev-kpi-btn' + (isActive('severity', key) ? ' active' : '') + (n ? '' : ' zero') },
-        el('span', { class: 'dot' }), el('span', { text: L.severityLabel(key, state.lang) }), el('b', { text: String(n) }));
-      b.style.setProperty('--c', L.SEVERITY[key].color);
-      b.addEventListener('click', () => toggleFilter('severity', key));
-      return b;
-    }));
-
-    // 상태별 도넛 + 범례(누르면 상태 필터). 0건인 상태는 그리지 않는다
-    const C = 2 * Math.PI * 15.5;
-    const counts = Object.keys(L.STATUS).map((key) => [key, vis.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === key).length]).filter(([, n]) => n > 0);
-    const statusFilter = state.filter && state.filter.type === 'status' ? state.filter.value : null;
-    const svgNS = 'http://www.w3.org/2000/svg';
-    let offset = 0;
-    const segs = counts.map(([key, n]) => {
-      const len = (n / k.total) * C;
-      const c = document.createElementNS(svgNS, 'circle');
-      c.setAttribute('class', 'ring-seg' + (statusFilter && statusFilter !== key ? ' dim' : ''));
-      c.setAttribute('cx', '18'); c.setAttribute('cy', '18'); c.setAttribute('r', '15.5');
-      c.setAttribute('stroke', L.STATUS[key].color);
-      c.setAttribute('stroke-dasharray', `${Math.max(len - 0.6, 0)} ${C - Math.max(len - 0.6, 0)}`);   // 조각 사이 틈
-      c.setAttribute('stroke-dashoffset', String(-offset));
-      offset += len;
-      return c;
+  // 위쪽 행동 카드 4장(늘 전체 미해결 기준) + 상태별 칩 · 티켓 연결(지금 보기 기준)
+  const CARD_FILTERS = { urgent: { severity: ['hotfix', 'critical'] }, overdue: { age: ['overdue'] }, unassigned: { assignee: [''] }, open: {} };
+  function sameFilters(a, b) {
+    const norm = (o) => JSON.stringify(Object.keys(o).filter((k) => o[k] && o[k].length).sort().map((k) => [k, [...o[k]].sort()]));
+    return norm(a) === norm(b);
+  }
+  function renderCards() {
+    const c = L.actionCounts(state.all, state.yt);
+    const cm = currentMonthKST();
+    const open = state.all.filter((r) => r.status !== 'done');
+    const carried = open.filter((r) => L.isCarried(r, cm));
+    const year = cm.slice(0, 4);
+    const byMonth = L.carryMonths(carried).map(([ym, n]) => I.monthCount(state.lang, ym, ym.slice(0, 4) === year, n));
+    $('card-open').textContent = String(c.open);
+    $('card-open-sub').textContent = t('card.openSub', { m: open.length - carried.length, c: carried.length }) + (byMonth.length ? ` (${byMonth.join(' · ')})` : '');
+    $('card-urgent').textContent = String(c.urgent);
+    $('card-overdue').textContent = String(c.overdue);
+    $('card-unassigned').textContent = String(c.unassigned);
+    document.querySelectorAll('.cards .card').forEach((b) => {
+      const k = b.dataset.card;
+      const on = state.view === 'open' && (k === 'open' ? !Object.values(state.filters).some((v) => v && v.length) : sameFilters(state.filters, CARD_FILTERS[k]));
+      b.classList.toggle('on', on);
+      b.classList.toggle('zero', k !== 'open' && c[k] === 0);
+      b.setAttribute('aria-pressed', String(on));
     });
-    $('kpi-ring-segs').replaceChildren(...segs);
-    $('kpi-legend').replaceChildren(...counts.map(([key, n]) => {
-      const b = el('button', { type: 'button', class: 'legend-btn' + (isActive('status', key) ? ' active' : '') },
-        el('span', { class: 'dot' }), el('span', { text: L.statusName(key, state.lang) }), el('b', { text: String(n) }));
-      b.style.setProperty('--c', L.STATUS[key].color);
-      b.addEventListener('click', () => toggleFilter('status', key));
+
+    // 상태별 칩: 지금 보기(미해결 · 이월 · …)의 상태별 건수. 누르면 그 상태만, 다시 누르면 해제
+    const base = L.viewRows(state.all, state.view, cm);
+    const counts = Object.keys(L.STATUS).map((k) => [k, base.filter((r) => (L.STATUS[r.status] ? r.status : 'open') === k).length]).filter(([, n]) => n > 0);
+    $('status-chips').replaceChildren(...counts.map(([k, n]) => {
+      const on = isActive('status', k);
+      const b = el('button', { type: 'button', class: 'st-chip' + (on ? ' on' : ''), 'aria-pressed': String(on) }, el('span', { class: 'dot' }), el('span', { text: L.statusName(k, state.lang) }), el('b', { text: String(n) }));
+      b.style.setProperty('--c', L.STATUS[k].color);
+      b.addEventListener('click', () => { state.filters.status = on ? [] : [k]; filtersChanged(); });
       return b;
     }));
+    const k = L.kpi(base);
+    $('kpi-ticketed').textContent = String(k.ticketed);
+    $('kpi-ticketed-of').textContent = String(k.total);
+    $('kpi-ticketed-sub').textContent = k.total ? t('kpi.noTicket', { n: k.total - k.ticketed }) : '';
+    $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
   }
+  document.querySelectorAll('.cards .card').forEach((b) => b.addEventListener('click', () => {
+    const k = b.dataset.card;
+    const target = CARD_FILTERS[k];
+    // 이미 켜진 카드를 다시 누르면 해제
+    const on = b.classList.contains('on') && k !== 'open';
+    state.view = 'open';
+    state.filters = on ? {} : JSON.parse(JSON.stringify(target));
+    saveListPrefs();
+    filtersChanged();
+  }));
 
-  function isActive(type, value) { return !!state.filter && state.filter.type === type && state.filter.value === value; }
+  function isActive(type, value) { return (state.filters[type] || []).includes(value); }
   function toggleFilter(type, value) {
-    state.filter = isActive(type, value) ? null : { type, value };
-    renderKpi();
-    renderSidebar();
-    renderList();
+    const cur = state.filters[type] || [];
+    state.filters[type] = cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value];
+    filtersChanged();
   }
+  function filtersChanged() { renderCards(); renderSidebar(); renderList(); }
+
+  // 필터 칩 줄: 종류마다 칩 하나. 누르면 메뉴(항목 · 건수, 여러 개 고르기), 걸린 값은 칩에 이름으로
+  const FILTER_TYPES = ['severity', 'status', 'device', 'assignee', 'issue'];
+  let openMenu = null;
+  function renderFilterChips() {
+    const chips = [...FILTER_TYPES, ...(isActive('age', 'overdue') ? ['age'] : [])].map((type) => {
+      const vals = state.filters[type] || [];
+      const label = t(`fchip.${type}`);
+      const chip = el('span', { class: 'fchip' + (vals.length ? ' on' : '') });
+      const btn = el('button', { type: 'button', class: 'fchip-btn', 'aria-haspopup': 'true', 'aria-expanded': String(openMenu === type) },
+        el('span', { text: type === 'age' ? label : vals.length ? `${label}: ${vals.map((v) => filterValueName(type, v)).join(', ')}` : label }),
+        type === 'age' ? null : el('span', { class: 'caret', 'aria-hidden': 'true', text: '▾' }));
+      if (type !== 'age') btn.addEventListener('click', (e) => { e.stopPropagation(); openMenu = openMenu === type ? null : type; renderFilterChips(); });
+      chip.append(btn);
+      if (vals.length) {
+        const x = el('button', { type: 'button', class: 'fchip-x', 'aria-label': t('fchip.remove', { name: label }), text: '✕' });
+        x.addEventListener('click', () => { state.filters[type] = []; openMenu = null; filtersChanged(); });
+        chip.append(x);
+      }
+      if (openMenu === type) chip.append(filterMenu(type));
+      return chip;
+    });
+    $('filter-chips').replaceChildren(...chips);
+    // 메뉴가 화면 오른쪽 밖으로 나가면 칩 오른쪽 끝에 맞춘다 (좁은 화면)
+    const menu = $('filter-chips').querySelector('.fmenu');
+    if (menu && menu.getBoundingClientRect().right > document.documentElement.clientWidth - 8) menu.classList.add('right');
+    $('filters-clear').hidden = !Object.values(state.filters).some((v) => v && v.length);
+  }
+  function filterMenu(type) {
+    // 건수는 지금 보기 + 다른 종류의 필터를 건 상태 기준 (이 종류를 고르면 몇 건이 남는지)
+    const others = { ...state.filters, [type]: [] };
+    const base = L.applyFilters(L.viewRows(state.all, state.view, currentMonthKST()), others, summaryView().issues, state.yt);
+    const opts = L.filterOptions(base, type, summaryView().issues, state.yt).filter(([v, n]) => n > 0 || isActive(type, v));
+    const menu = el('div', { class: 'fmenu', role: 'menu' });
+    menu.addEventListener('click', (e) => e.stopPropagation());
+    if (!opts.length) menu.append(el('p', { class: 'muted small', text: type === 'issue' ? t('fchip.issueNone') : t('fchip.empty') }));
+    opts.forEach(([v, n]) => {
+      const on = isActive(type, v);
+      const item = el('button', { type: 'button', role: 'menuitemcheckbox', 'aria-checked': String(on), class: 'fmenu-item' + (on ? ' on' : '') },
+        el('span', { class: 'check', 'aria-hidden': 'true', text: on ? '✓' : '' }), el('span', { class: 'lbl', text: filterValueName(type, v) }), el('b', { text: String(n) }));
+      item.addEventListener('click', () => toggleFilter(type, v));
+      menu.append(item);
+    });
+    return menu;
+  }
+  document.addEventListener('click', () => { if (openMenu) { openMenu = null; renderFilterChips(); } });
+  $('filters-clear').addEventListener('click', () => { state.filters = {}; openMenu = null; filtersChanged(); });
 
   function countBy(rows, key) {
     const m = new Map();
@@ -721,7 +790,7 @@
     $('summary-copy-btn').hidden = !s;
     $('summary-gen-btn').textContent = s ? t('btn.regenerate') : t('btn.generate');
     $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
-    $('filter-clear').hidden = !state.filter;
+    $('filter-clear').hidden = !Object.values(state.filters).some((v) => v && v.length);
 
     // 주요 이슈
     const issueBox = $('issue-list');
@@ -800,14 +869,13 @@
       ? notes.map((n) => el('p', {}, n.customer ? el('span', { class: 'cust', text: n.customer }) : null, n.text))
       : [el('p', { class: 'muted', text: s ? t('common.none') : '—' })]));
   }
-  $('filter-clear').addEventListener('click', () => { state.filter = null; renderKpi(); renderSidebar(); renderList(); });
-  $('kpi-ring-btn').addEventListener('click', () => { if (!state.filter) return; state.filter = null; renderKpi(); renderSidebar(); renderList(); });
+  $('filter-clear').addEventListener('click', () => { state.filters = {}; filtersChanged(); });
 
   // ───────────── 툴바 ─────────────
   $('prev-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, -1)));
   $('next-month').addEventListener('click', () => changeMonth(shiftMonth(state.month, 1)));
   $('this-month').addEventListener('click', () => changeMonth(currentMonthKST()));
-  $('search-input').addEventListener('input', () => { renderKpi(); renderList(); loadSearchTickets(); });
+  $('search-input').addEventListener('input', () => { renderCards(); renderList(); loadSearchTickets(); });
   // 단축키: / 로 검색, Esc 로 열린 빠른 폼 → 상세 순서로 닫기 (입력 중이거나 창이 열려 있으면 그대로)
   document.addEventListener('keydown', (e) => {
     if (e.isComposing || e.defaultPrevented || document.querySelector('dialog[open]')) return;
@@ -815,7 +883,7 @@
     if (e.key === '/' && !typing && !$('app-view').hidden) { e.preventDefault(); $('search-input').focus(); return; }
     if (e.key !== 'Escape') return;
     if (e.target === $('search-input') && searchQuery()) return;   // 검색칸 Esc 는 브라우저가 검색어를 지움
-    if (state.quick) { state.quick = null; renderDetail(); return; }
+    if (openMenu) { openMenu = null; renderFilterChips(); return; }
     if (state.selected) { e.preventDefault(); closeDetail(); }
   });
   $('export-btn').addEventListener('click', exportCsv);
@@ -919,6 +987,7 @@
   function openDialog(row) {
     state.editing = row;
     form.reset();
+    form.querySelectorAll('[aria-invalid]').forEach((n) => n.removeAttribute('aria-invalid'));
     showError($('form-error'), '');
     setBusy(false);
     setDeleteConfirm(false);
@@ -1005,11 +1074,12 @@
       tickets: listValues('tickets'),
     };
     const missing = [];
-    if (!payload.reporter) missing.push(t('f.nReporter'));
-    if (!payload.customer) missing.push(t('f.nCustomer'));
-    if (!payload.received_at) missing.push(t('f.nDate'));
-    if (!DEVICES.includes(payload.device)) missing.push(t('f.nDevice'));
+    // 창에 보이는 순서대로
     if (!payload.title) missing.push(t('f.nTitle'));
+    if (!payload.customer) missing.push(t('f.nCustomer'));
+    if (!DEVICES.includes(payload.device)) missing.push(t('f.nDevice'));
+    if (!payload.received_at) missing.push(t('f.nDate'));
+    if (!payload.reporter) missing.push(t('f.nReporter'));
     if (!L.STATUS[payload.status]) missing.push(t('f.nStatus'));
     if (!L.SEVERITY[payload.severity]) missing.push(t('f.nSeverity'));
     return { payload, missing };
@@ -1018,7 +1088,15 @@
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const { payload, missing } = readForm();
-    if (missing.length) { showError($('form-error'), t('f.required', { list: missing.join(', ') })); return; }
+    // 빈 필수 칸은 빨간 테두리로 짚고 첫 칸으로 이동
+    const bad = [['title', !payload.title], ['customer', !payload.customer], ['device', !DEVICES.includes(payload.device)], ['received_at', !payload.received_at], ['reporter', !payload.reporter]];
+    bad.forEach(([n, b]) => { if (b) form.elements[n].setAttribute('aria-invalid', 'true'); else form.elements[n].removeAttribute('aria-invalid'); });
+    if (missing.length) {
+      showError($('form-error'), t('f.required', { list: missing.join(', ') }));
+      const first = bad.find(([, b]) => b);
+      if (first) form.elements[first[0]].focus();
+      return;
+    }
 
     const target = state.editing;
     setBusy(true);
@@ -1088,7 +1166,7 @@
   function resetPasteBox(show) {
     const box = $('paste-box');
     box.hidden = !show;
-    box.open = false;
+    box.open = show;   // 새 CS 는 가장 빠른 길(슬랙 붙여넣기)을 펼쳐 둔다
     $('paste-text').value = '';
     $('paste-status').textContent = '';
     showError($('paste-notes'), '');
@@ -1177,7 +1255,7 @@
       state.summaryBusy = false;
       if (state.month !== month) { renderSidebar(); return; }   // 그 사이 다른 달로 옮겼으면 그 달 화면만 풀어 준다
       state.summary = summary;
-      if (state.filter && state.filter.type === 'issue') state.filter = null;   // 이슈 번호가 바뀌므로
+      delete state.filters.issue;   // 이슈 번호가 바뀌므로
       renderSidebar();
       renderList();
       toast(t('sum.saved'));
@@ -1439,42 +1517,16 @@
     const b = L.popupBig(innerWidth, innerHeight);
     Object.assign(box.style, { left: `${b.x}px`, top: `${b.y}px`, width: `${b.w}px`, height: `${b.h}px` });
   }
+  // 팝업도 상세와 같은 본문: 상태 버튼 · 상태 메모 · CS 담당 · 심각도 · 이력 추가를 바로 바꿀 수 있다
   function renderPopup(id) {
     const p = popups.get(id);
-    const r = allRows().find((x) => x.id === id) || p.row;   // 다른 달로 옮겨도 마지막으로 본 내용을 유지
+    const r = allRows().find((x) => x.id === id) || p.row;   // 목록에서 빠져도 마지막으로 본 내용을 유지
     p.row = r;
     const f = disp(r);
-    const ys = L.ytSeverity(r, state.yt);
-    const sk = ys ? ys.key : L.severityKey(r);
-    const pill = el('span', { class: 'status-pill', text: L.statusLabel(r, state.lang, f) });
-    pill.style.setProperty('--c', L.statusColor(r));
-    const sevPill = sk === 'normal' ? null : el('span', { class: 'sev-badge big', text: L.severityLabel(sk, state.lang) });
-    if (sevPill) sevPill.style.setProperty('--s', L.SEVERITY[sk].color);
-    const ta = L.ticketAssignees(r, state.yt);
-    const ts = L.ticketState(r, state.yt, state.lang);
-    const tsNode = ts ? el('span', { class: 'status-inline', text: ts.label, title: ts.title }) : el('span', { class: 'muted', text: r.tickets.length ? t('list.unknownState') : '—' });
-    if (ts) tsNode.style.setProperty('--c', ts.color);
-    const cs = el('span', { class: 'status-inline', text: L.statusLabel(r, state.lang, f) });
-    cs.style.setProperty('--c', L.statusColor(r));
-    const meta = [
-      ['col.customer', el('span', { class: 'bold', text: r.customer })],
-      ['col.device', el('span', { text: deviceLine(r) })],
-      ['col.received', el('span', {}, ...receivedNode(r))],
-      ['col.reporter', el('span', { text: r.reporter })],
-      ['col.csOwner', el('span', { class: r.assignee ? '' : 'muted', text: r.assignee || t('common.unassigned') })],
-      ['col.severity', el('span', { class: sk === 'normal' ? 'muted' : 'bold', text: L.severityLabel(sk, state.lang) + (ys ? ` · YouTrack ${ys.ids.join(', ')}` : '') })],
-      ['col.csStatus', cs],
-      ['col.ticketOwner', el('span', { class: ta.names.length ? '' : 'muted', text: ta.names.length ? ta.names.join(', ') : (r.tickets.length ? t('common.unassigned') : '—') })],
-      ['col.ticketStatus', tsNode],
-      ['col.tickets', el('span', { class: 'ticket-lines' }, ...(r.tickets.length ? L.ticketInfos(r, state.yt).map(ticketLine) : [el('span', { class: 'muted small', text: t('common.none') })]))],
-    ].flatMap(([k, v]) => [el('dt', { text: t(k) }), el('dd', {}, v)]);
-    const history = f.timeline.length
-      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text })); })
-      : [el('li', { class: 'muted', text: t('detail.noHistory') })];
     const inList = allRows().some((x) => x.id === id);
     const openBtn = el('button', { type: 'button', class: 'btn xs', text: t('popup.openInDetail') });
     openBtn.disabled = !inList;
-    openBtn.addEventListener('click', () => { state.selected = id; state.quick = null; state.showOriginal = false; renderList(); renderDetail(); });
+    openBtn.addEventListener('click', () => { state.selected = id; state.showOriginal = false; renderList(); renderDetail(); });
     const closeBtn = el('button', { type: 'button', class: 'btn icon xs', 'aria-label': t('popup.close'), title: t('popup.close'), text: '✕' });
     closeBtn.addEventListener('click', () => closePopup(id));
     const head = el('div', { class: 'popup-head', title: t('popup.drag') },
@@ -1482,12 +1534,10 @@
       el('span', { class: 'panel-head-actions' }, openBtn, closeBtn));
     popupDrag(head, p.box);
     head.addEventListener('dblclick', (e) => { if (!e.target.closest('button')) togglePopupBig(p.box); });
-    const body = el('div', { class: 'popup-body' },
-      el('div', {}, pill, sevPill, el('h2', { class: 'detail-title', text: f.title || t('list.noTitle') }),
-        f.translated ? el('div', { class: 'tr-bar' }, el('span', { text: t('tr.from', { lang: t(L.hasHangul(r) ? 'lang.ko' : 'lang.en') }) })) : null),
-      el('dl', { class: 'meta' }, meta),
-      el('div', { class: 'detail-section' }, el('h3', { text: t('detail.desc') }), el('p', { class: 'detail-desc', text: f.description || '—' })),
-      el('div', { class: 'detail-section' }, el('h3', { text: t('detail.history') }), el('ol', { class: 'history' }, history)));
+    // 입력 중이던 칸은 다시 그려도 값을 지킨다
+    const keep = keptInputs(p.box, r.id);
+    const body = el('div', { class: 'popup-body' }, ...csBody(r, { full: false }));
+    restoreInputs(body, keep);
     p.box.setAttribute('aria-label', f.title || t('list.noTitle'));
     p.box.replaceChildren(head, body);
   }

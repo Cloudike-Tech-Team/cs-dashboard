@@ -118,6 +118,48 @@
     return `${p.month}/${p.day} ${s}`;
   }
 
+  // ── UX 2차: 필터 겹쳐 걸기 · 행동 카드 · 상태 어긋남
+  // filters: { severity: [], status: [], device: [], assignee: [], issue: [], age: ['overdue'] }
+  // 종류 안에서는 하나라도 맞으면(OR), 종류끼리는 모두 맞아야(AND). 빈 배열 · 없는 종류는 통과
+  function applyFilters(rows, filters, issues, yt, now = Date.now()) {
+    const active = Object.entries(filters || {}).filter(([, vs]) => vs && vs.length);
+    if (!active.length) return rows;
+    return rows.filter((r) => active.every(([type, vs]) => vs.some((v) => (type === 'age'
+      ? !!(ageInfo(r, now) || {}).overdue
+      : applyFilter([r], { type, value: v }, issues, yt).length > 0))));
+  }
+  // 위쪽 행동 카드 4장: 늘 전체 미해결 기준
+  function actionCounts(rows, yt, now = Date.now()) {
+    const open = rows.filter((r) => r.status !== 'done');
+    return {
+      open: open.length,
+      urgent: open.filter((r) => ['hotfix', 'critical'].includes(severityOf(r, yt))).length,
+      overdue: open.filter((r) => ageInfo(r, now).overdue).length,
+      unassigned: open.filter((r) => !r.assignee).length,
+    };
+  }
+  // CS 상태와 티켓 상태가 어긋난 건: 트래커에서 읽은 티켓이 모두 끝났는데 CS 미완료 → 'ticketDone',
+  // CS 는 완료인데 아직 안 끝난 티켓이 있으면 → 'ticketOpen'. 읽은 티켓이 없으면 판단하지 않음(null)
+  function mismatch(row, yt) {
+    const found = ticketInfos(row, yt).filter((x) => x.yt);
+    if (!found.length) return null;
+    const allDone = found.every((x) => x.yt.resolved);
+    if (allDone && row.status !== 'done') return 'ticketDone';
+    if (!allDone && row.status === 'done') return 'ticketOpen';
+    return null;
+  }
+  // 필터 메뉴의 값과 건수. 심각도는 급한 순, 상태는 정해진 순, 나머지는 많은 순(담당 미지정은 맨 끝)
+  function filterOptions(rows, type, issues, yt) {
+    const count = (v) => applyFilter(rows, { type, value: v }, issues, yt).length;
+    if (type === 'severity') return [...SEVERITY_RANK].reverse().map((k) => [k, count(k)]);
+    if (type === 'status') return Object.keys(STATUS).map((k) => [k, count(k)]);
+    if (type === 'issue') return (issues || []).map((_, i) => [i, count(i)]);
+    const key = type === 'assignee' ? (r) => r.assignee || '' : (r) => r[type] || '';
+    const m = new Map();
+    rows.forEach((r) => m.set(key(r), (m.get(key(r)) || 0) + 1));
+    return [...m.entries()].sort((a, b) => (a[0] === '') - (b[0] === '') || b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'ko'));
+  }
+
   // 목록 · 상세의 D+N. 완료된 CS 는 경과일을 보이지 않는다(null)
   function ageDays(row, now = Date.now()) {
     return row.status === 'done' ? null : daysSince(row.received_at, now);
@@ -315,7 +357,7 @@
   }
 
   return {
-    popupPlace, popupBig, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
+    popupPlace, popupBig, applyFilters, actionCounts, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

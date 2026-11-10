@@ -422,3 +422,55 @@ test('datedEntry: 날짜가 없는 처리 이력은 오늘 날짜를 붙인다',
   assert.equal(L.datedEntry('11-04 접수', NOW), '11-04 접수');
   assert.equal(L.datedEntry('  ', NOW), '');
 });
+
+// ── UX 2차: 필터 겹쳐 걸기 · 행동 카드 · 상태 어긋남
+const YT2 = {
+  'A-1': { state: 'Done', resolved: true, assignees: [], priority: 'Critical' },
+  'A-2': { state: 'In Progress', resolved: false, assignees: [], priority: '' },
+};
+
+test('applyFilters: 종류 안에서는 하나라도(OR), 종류끼리는 모두(AND), 빈 조건은 통과', () => {
+  const rows = [
+    row({ id: 'a', device: '웹', assignee: '김', severity: 'hotfix' }),
+    row({ id: 'b', device: '웹', assignee: '' }),
+    row({ id: 'c', device: 'IOS', assignee: '김', severity: 'major' }),
+  ];
+  assert.deepEqual(ids(L.applyFilters(rows, {}, [], {})), ['a', 'b', 'c']);
+  assert.deepEqual(ids(L.applyFilters(rows, { device: ['웹'] }, [], {})), ['a', 'b']);
+  assert.deepEqual(ids(L.applyFilters(rows, { device: ['웹', 'IOS'], assignee: ['김'] }, [], {})), ['a', 'c']);
+  assert.deepEqual(ids(L.applyFilters(rows, { severity: ['hotfix', 'critical'] }, [], {})), ['a']);
+  assert.deepEqual(ids(L.applyFilters(rows, { assignee: [''] }, [], {})), ['b']);
+  assert.deepEqual(ids(L.applyFilters(rows, { issue: [0] }, [{ ticket_ids: ['c'] }], {})), ['c']);
+});
+
+test('applyFilters: age=overdue 는 7일 이상 열린 미해결', () => {
+  const rows = [row({ id: 'x', received_at: '2026-11-01T10:00:00+09:00' }), row({ id: 'y', received_at: '2026-11-09T10:00:00+09:00' }), row({ id: 'z', received_at: '2026-10-01T10:00:00+09:00', status: 'done' })];
+  assert.deepEqual(ids(L.applyFilters(rows, { age: ['overdue'] }, [], {}, NOW)), ['x']);
+});
+
+test('actionCounts: 미해결 · 긴급(핫픽스·크리티컬) · 7일 넘게 열림 · 담당 미지정 (모두 미해결 기준)', () => {
+  const rows = [
+    row({ received_at: '2026-11-01T10:00:00+09:00', severity: 'hotfix', assignee: '김' }),
+    row({ received_at: '2026-11-09T10:00:00+09:00', tickets: ['A-1'], assignee: '' }),   // YouTrack Critical
+    row({ received_at: '2026-10-01T10:00:00+09:00', assignee: '' }),
+    row({ received_at: '2026-10-01T10:00:00+09:00', status: 'done', severity: 'hotfix', assignee: '' }),
+  ];
+  assert.deepEqual(L.actionCounts(rows, YT2, NOW), { open: 3, urgent: 2, overdue: 2, unassigned: 2 });
+});
+
+test('mismatch: 티켓은 모두 끝났는데 CS 미완료 / CS 는 완료인데 티켓 진행 중 / 그 외 null', () => {
+  assert.equal(L.mismatch(row({ status: 'deploy', tickets: ['A-1'] }), YT2), 'ticketDone');
+  assert.equal(L.mismatch(row({ status: 'done', tickets: ['A-1', 'A-2'] }), YT2), 'ticketOpen');
+  assert.equal(L.mismatch(row({ status: 'open', tickets: ['A-1', 'A-2'] }), YT2), null);
+  assert.equal(L.mismatch(row({ status: 'done', tickets: ['A-1'] }), YT2), null);
+  assert.equal(L.mismatch(row({ status: 'open', tickets: ['Z-9'] }), YT2), null);   // 트래커에 없음
+  assert.equal(L.mismatch(row({ status: 'open' }), YT2), null);
+});
+
+test('filterOptions: 종류별 값과 건수 (많은 순, 담당 미지정은 맨 끝)', () => {
+  const rows = [row({ device: '웹', assignee: '김' }), row({ device: '웹', assignee: '' }), row({ device: 'IOS', assignee: '이' }), row({ device: 'IOS', assignee: '김' }), row({ device: 'IOS' })];
+  assert.deepEqual(L.filterOptions(rows, 'device', [], {}), [['IOS', 3], ['웹', 2]]);
+  assert.deepEqual(L.filterOptions(rows, 'assignee', [], {}), [['김', 2], ['이', 1], ['', 2]]);
+  assert.deepEqual(L.filterOptions(rows, 'severity', [], {}).map(([k]) => k), ['hotfix', 'critical', 'major', 'normal']);
+  assert.deepEqual(L.filterOptions(rows, 'status', [], {})[0], ['open', 5]);
+});

@@ -47,35 +47,24 @@
         <select id="search-scope" class="scope-select" aria-label="검색 범위" data-i18n-aria="scope.aria"></select>
       </div>
       <div class="toolbar-right">
-        <button id="export-btn" class="btn" type="button" data-i18n="btn.export">CSV 내보내기</button>
         <button id="new-btn" class="btn primary" type="button" data-i18n="btn.new">+ 새 CS</button>
       </div>
     </div>
 
-    <div class="kpis">
-      <div class="kpi kpi-donut">
-        <!-- 누르면 걸려 있는 필터를 푼다 (필터가 없으면 아무 일도 없음) -->
-        <button id="kpi-ring-btn" class="ring-btn" type="button">
-          <svg id="kpi-ring" class="ring" viewBox="0 0 36 36" role="img" aria-labelledby="kpi-ring-title">
-            <title id="kpi-ring-title" data-i18n="kpi.ringTitle">상태별 접수 비율</title>
-            <circle class="ring-track" cx="18" cy="18" r="15.5"></circle>
-            <g id="kpi-ring-segs"></g>
-          </svg>
-          <span class="ring-center" title="위 숫자는 지금 보이는 목록 기준" data-i18n-title="kpi.listedTitle"><span id="kpi-total" class="kpi-value">0</span><span class="kpi-label" data-i18n="kpi.listed">목록</span></span>
-        </button>
-        <div id="kpi-legend" class="ring-legend" aria-label="상태별 건수 · 눌러서 필터" data-i18n-aria="kpi.legendAria"></div>
-      </div>
-      <div class="kpi"><span class="kpi-label" data-i18n="kpi.open">미해결</span><span id="kpi-open" class="kpi-value c-open">0</span><span id="kpi-open-sub" class="kpi-sub muted"></span></div>
-      <div class="kpi kpi-sev">
-        <span class="kpi-label" data-i18n="kpi.sev">심각도 · 미해결 기준</span>
-        <div id="kpi-sev" class="sev-kpi" aria-label="심각도별 미해결 건수 · 눌러서 필터" data-i18n-aria="kpi.sevAria"></div>
-      </div>
-      <div class="kpi kpi-tickets">
-        <span class="kpi-label" data-i18n="kpi.ticketed">티켓 연결</span>
-        <span class="kpi-value"><span id="kpi-ticketed">0</span> <span id="kpi-ticketed-of" class="kpi-of muted"></span></span>
-        <span class="meter" aria-hidden="true"><span id="kpi-ticketed-bar"></span></span>
-        <span id="kpi-ticketed-sub" class="kpi-sub muted"></span>
-      </div>
+    <div class="cards" aria-label="해야 할 일" data-i18n-aria="card.aria">
+      <button class="card" type="button" data-card="open"><span class="card-label" data-i18n="card.open">미해결</span><span id="card-open" class="card-value">0</span><span id="card-open-sub" class="card-sub"></span></button>
+      <button class="card urgent" type="button" data-card="urgent"><span class="card-label" data-i18n="card.urgent">긴급 · 핫픽스·크리티컬</span><span id="card-urgent" class="card-value">0</span><span class="card-sub" data-i18n="card.urgentSub">미해결 기준</span></button>
+      <button class="card overdue" type="button" data-card="overdue"><span class="card-label" data-i18n="card.overdue">7일 넘게 열림</span><span id="card-overdue" class="card-value">0</span><span class="card-sub" data-i18n="card.overdueSub">경과일로 자동 판단</span></button>
+      <button class="card" type="button" data-card="unassigned"><span class="card-label" data-i18n="card.unassigned">담당 미지정</span><span id="card-unassigned" class="card-value">0</span><span class="card-sub" data-i18n="card.unassignedSub">바로 배정 필요</span></button>
+    </div>
+    <div class="strip">
+      <span class="strip-label" data-i18n="strip.status">상태별</span>
+      <div id="status-chips" class="status-chips"></div>
+      <span class="vsep"></span>
+      <span class="strip-label" data-i18n="kpi.ticketed">티켓 연결</span>
+      <span class="meter" aria-hidden="true"><span id="kpi-ticketed-bar"></span></span>
+      <span class="strip-num"><b id="kpi-ticketed">0</b> / <span id="kpi-ticketed-of">0</span></span>
+      <span id="kpi-ticketed-sub" class="muted small"></span>
     </div>
 
     <div class="body">
@@ -138,12 +127,17 @@
         </div>
         <div class="list-bar">
           <div id="view-tabs" class="seg" role="group" aria-label="보기" data-i18n-aria="view.aria"></div>
-          <select id="sort-select" class="sort-select" aria-label="정렬" data-i18n-aria="sort.aria"></select>
+          <div id="filter-chips" class="filter-chips" aria-label="필터" data-i18n-aria="filter.aria"></div>
+          <button id="filters-clear" class="link-btn" type="button" hidden data-i18n="filter.clearAll">필터 모두 지우기</button>
+          <span class="list-bar-right">
+            <button id="export-btn" class="btn small" type="button" title="지금 보이는 목록 그대로" data-i18n="btn.csv" data-i18n-title="csv.title">CSV</button>
+            <select id="sort-select" class="sort-select" aria-label="정렬" data-i18n-aria="sort.aria"></select>
+          </span>
         </div>
         <p id="list-error" class="error side-pad" hidden></p>
         <p id="tickets-error" class="error side-pad" hidden></p>
         <p id="tr-error" class="error side-pad" hidden></p>
-        <div class="list-head"><span data-i18n="col.received">접수</span><span data-i18n="col.customer">고객사</span><span data-i18n="col.device">기기</span><span data-i18n="col.severity">심각도</span><span data-i18n="col.issue">현상</span><span data-i18n="col.csOwner">CS 담당</span><span data-i18n="col.csStatus">CS 상태</span><span data-i18n="col.ticketOwner">티켓 담당</span><span data-i18n="col.ticketStatus">티켓 상태</span></div>
+        <div class="list-head"><span data-i18n="col.main">현상 · 고객사</span><span data-i18n="col.csStatus">CS 상태</span><span data-i18n="col.csOwner">CS 담당</span><span data-i18n="col.tickets">티켓</span><span data-i18n="col.whenAge">접수 · 경과</span></div>
         <div id="cs-list" class="cs-list"></div>
         <p id="empty" class="empty" hidden></p>
       </section>
@@ -159,42 +153,7 @@
             </button>
           </span>
         </div>
-        <div class="detail-body">
-          <div>
-            <span id="detail-status" class="status-pill"></span>
-            <span id="detail-severity-pill" class="sev-badge big" hidden></span>
-            <h2 id="detail-title" class="detail-title"></h2>
-            <div id="tr-bar" class="tr-bar" hidden><span id="tr-label"></span><button id="tr-toggle" class="link-btn" type="button"></button></div>
-          </div>
-          <dl class="meta">
-            <dt data-i18n="col.customer">고객사</dt><dd id="detail-customer" class="bold"></dd>
-            <dt data-i18n="col.device">기기</dt><dd id="detail-device"></dd>
-            <dt data-i18n="col.received">접수</dt><dd id="detail-received"></dd>
-            <dt data-i18n="col.reporter">접수자</dt><dd id="detail-reporter"></dd>
-            <dt data-i18n="col.csOwner">CS 담당</dt><dd id="detail-assignee"></dd>
-            <dt data-i18n="col.severity">심각도</dt><dd id="detail-severity"></dd>
-            <dt data-i18n="col.csStatus">CS 상태</dt><dd id="detail-cs-status"></dd>
-            <dt data-i18n="col.ticketOwner">티켓 담당</dt><dd id="detail-ticket-assignee"></dd>
-            <dt data-i18n="col.ticketStatus">티켓 상태</dt><dd id="detail-ticket-state"></dd>
-            <dt data-i18n="col.tickets">티켓</dt><dd id="detail-tickets" class="ticket-lines"></dd>
-          </dl>
-          <div class="detail-section">
-            <h3 data-i18n="detail.desc">현상 설명</h3>
-            <p id="detail-desc" class="detail-desc"></p>
-          </div>
-          <div class="detail-section">
-            <h3 data-i18n="detail.history">처리 이력</h3>
-            <ol id="detail-history" class="history"></ol>
-          </div>
-          <p id="detail-error" class="error" hidden></p>
-          <div id="quick-box"></div>
-          <div class="detail-actions">
-            <button id="status-btn" class="btn" type="button" data-i18n="btn.status">상태 변경</button>
-            <button id="history-btn" class="btn" type="button" data-i18n="btn.history">이력 추가</button>
-            <button id="assignee-btn" class="btn" type="button" data-i18n="btn.assignee">담당 변경</button>
-            <button id="edit-btn" class="btn" type="button" data-i18n="btn.edit">수정</button>
-          </div>
-        </div>
+        <div id="detail-body" class="detail-body"></div>
       </aside>
     </div>
   </section>
@@ -217,21 +176,21 @@
         <p id="paste-notes" class="muted small" hidden></p>
       </details>
 
+      <label class="f-title"><span data-i18n="f.titleLine">현상 한 줄 *</span><input name="title" maxlength="200" required placeholder="현상을 한 줄로" data-i18n-placeholder="f.titlePh"></label>
       <div class="grid">
-        <label><span data-i18n="f.reporter">접수자 *</span><input name="reporter" maxlength="100" required></label>
         <label><span data-i18n="f.customer">고객사, 유저 *</span><input name="customer" maxlength="200" required></label>
-        <label><span data-i18n="f.date">날짜 *</span><input name="received_at" type="datetime-local" required></label>
         <label><span data-i18n="f.device">기기 *</span><select name="device" required></select></label>
-        <label><span data-i18n="f.version">버전</span><input name="version" maxlength="100"></label>
+        <label><span data-i18n="f.version">버전</span><input name="version" maxlength="100" placeholder="v 없이 숫자만" data-i18n-placeholder="f.versionPh"></label>
         <label><span data-i18n="f.severity">심각도</span><select name="severity"></select><span id="sev-yt-note" class="muted small" hidden></span></label>
         <label><span data-i18n="f.status">상태</span><select name="status"></select></label>
         <label><span data-i18n="f.statusNote">상태 메모</span><input name="status_note" maxlength="50" placeholder="예) 로그 대기" data-i18n-placeholder="f.statusNotePh"></label>
         <label><span data-i18n="f.csOwner">CS 담당</span><select name="assignee"></select></label>
-        <label><span data-i18n="f.ticketOwner">티켓 담당</span><input name="ticket_assignee" maxlength="100" list="assignee-names" placeholder="티켓을 처리 중인 사람" data-i18n-placeholder="f.ticketOwnerPh"></label>
+        <label><span data-i18n="f.ticketOwner">티켓 담당</span><input name="ticket_assignee" maxlength="100" list="assignee-names" placeholder="트래커에 없는 티켓일 때만" data-i18n-placeholder="f.ticketOwnerPh"></label>
+        <label><span data-i18n="f.date">날짜 *</span><input name="received_at" type="datetime-local" required></label>
+        <label><span data-i18n="f.reporter">접수자 *</span><input name="reporter" maxlength="100" required></label>
       </div>
       <datalist id="assignee-names"></datalist>
 
-      <label><span data-i18n="f.title">제목 *</span><input name="title" maxlength="200" required placeholder="현상을 한 줄로" data-i18n-placeholder="f.titlePh"></label>
       <label><span data-i18n="f.desc">현상설명</span><textarea name="description" rows="3" maxlength="10000"></textarea></label>
       <label><span data-i18n="f.notes">특이사항</span><textarea name="notes" rows="2" maxlength="10000"></textarea></label>
 

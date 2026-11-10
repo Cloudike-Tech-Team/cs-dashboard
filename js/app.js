@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261110-4';
+  const APP_VERSION = '20261110-5';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -834,14 +834,13 @@
     const s = state.summary;
     // 헤더
     const busyHere = state.summaryBusy && state.summaryBusyMonth === state.month;
-    $('summary-meta').textContent = busyHere ? t('sum.generating') : s ? t('sum.meta', { when: fmtShort(s.generated_at), n: s.ticket_count }) : t('sum.none');
-    $('summary-copy-btn').hidden = !s;
-    $('summary-gen-btn').textContent = s ? t('btn.regenerate') : t('btn.generate');
+    // 주요 이슈 · 특이사항은 AI 가 그 달 CS 를 분석한 결과 (요약 본문은 보이지 않음). 분석 뒤 새로 들어온 건은 안내
+    const stale = s && state.rows.length > s.ticket_count ? state.rows.length - s.ticket_count : 0;
+    $('summary-meta').textContent = busyHere ? t('report.analyzing') : s ? t('report.analyzed', { when: fmtShort(s.generated_at) }) + (stale ? ` · ${t('report.stale', { n: stale })}` : '') : '';
+    $('summary-gen-btn').textContent = t('report.reanalyze');
+    $('summary-gen-btn').hidden = !s && !state.rows.length;
     $('summary-gen-btn').disabled = state.summaryBusy || state.loading;
     $('filter-clear').hidden = !Object.values(state.filters).some((v) => v && v.length);
-    const view0 = summaryView();
-    $('summary-text').hidden = !view0.content;
-    $('summary-text').textContent = view0.content || '';
     const mk = L.kpi(state.rows);
     $('report-count').textContent = t('report.count', { n: mk.total, open: mk.open });
 
@@ -849,7 +848,7 @@
     const issueBox = $('issue-list');
     const view = summaryView();
     const issues = L.issueCounts(view.issues, state.rows);
-    if (!s) issueBox.replaceChildren(el('p', { class: 'side-empty', text: t('sum.issuesEmpty') }));
+    if (!s) issueBox.replaceChildren(el('p', { class: 'side-empty', text: busyHere ? t('report.analyzing') : state.rows.length ? t('report.notYet') : t('side.noRows') }));
     else if (!issues.length) issueBox.replaceChildren(el('p', { class: 'side-empty', text: t('sum.oldFormat') }));
     else issueBox.replaceChildren(...(view.noEn ? [el('p', { class: 'side-empty', text: t('sum.noEn') })] : []), ...issues.map((is, i) => {
       // 라벨 + 건수만. 설명은 툴팁으로 내려 사이드바를 짧게 유지한다
@@ -918,9 +917,19 @@
     const notesBox = $('notes-list');
     const notes = view.notes;
     $('notes-count').textContent = notes.length ? String(notes.length) : '';
+    // 한 줄씩 간략하게(전체 문장은 마우스를 올리면), 처음엔 3개만
+    const shown = notesOpen ? notes : notes.slice(0, NOTES_SHOWN);
     notesBox.replaceChildren(...(notes.length
-      ? notes.map((n) => el('p', {}, n.customer ? el('span', { class: 'cust', text: n.customer }) : null, n.text))
-      : [el('p', { class: 'muted', text: s ? t('common.none') : '—' })]));
+      ? [...shown.map((n) => el('p', { class: 'note-line', title: `${n.customer ? n.customer + ' ' : ''}${n.text}` }, n.customer ? el('span', { class: 'cust', text: n.customer }) : null, n.text)),
+        ...(notes.length > NOTES_SHOWN ? [moreNotesBtn(notes.length - NOTES_SHOWN)] : [])]
+      : [el('p', { class: 'muted', text: busyHere ? t('report.analyzing') : s ? t('common.none') : '—' })]));
+  }
+  const NOTES_SHOWN = 3;
+  let notesOpen = false;
+  function moreNotesBtn(n) {
+    const b = el('button', { type: 'button', class: 'link-btn', text: notesOpen ? t('notes.less') : t('notes.more', { n }) });
+    b.addEventListener('click', () => { notesOpen = !notesOpen; renderSidebar(); });
+    return b;
   }
   $('filter-clear').addEventListener('click', () => { state.filters = {}; filtersChanged(); });
 
@@ -937,6 +946,7 @@
     });
     try { history.replaceState(null, '', p === 'report' ? '#report' : location.pathname + location.search); } catch { /* 무시 */ }
     if (p === 'list' && state.selected) renderDetail();
+    if (p === 'report') autoAnalyze();
   }
   document.querySelectorAll('.tabs .tab').forEach((b) => b.addEventListener('click', () => showPage(b.dataset.page)));
   // 리포트에서 이슈 · 막대를 누르면: 접수 현황으로 가서 그 달 접수(완료 포함)를 그 조건으로 걸러 본다
@@ -1320,6 +1330,8 @@
   async function loadSummary() {
     const seq = ++state.summarySeq;
     state.summary = null;
+    state.summaryLoadedMonth = null;
+    notesOpen = false;
     renderSidebar();
     const { data, error } = await sb
       .from('cs_monthly_summaries').select('*').eq('month', state.month).maybeSingle();
@@ -1327,9 +1339,16 @@
     if (error) { showError($('summary-error'), t('sum.loadFailed', { e: error.message })); return; }
     showError($('summary-error'), '');
     state.summary = data;
+    state.summaryLoadedMonth = state.month;
     renderSidebar();
+    autoAnalyze();
   }
-  $('summary-gen-btn').addEventListener('click', async () => {
+  // 리포트를 보고 있는데 그 달 분석 결과가 없으면 AI 분석을 자동으로 (결과는 DB 에 저장되어 달마다 한 번)
+  function autoAnalyze() {
+    if (page === 'report' && !state.loading && state.summaryLoadedMonth === state.month && !state.summary && state.rows.length && !state.summaryBusy) generateSummary();
+  }
+  $('summary-gen-btn').addEventListener('click', () => generateSummary());
+  async function generateSummary() {
     if (state.summaryBusy) return;
     if (state.loading || !state.rows.length) { toast(t('sum.nothing')); return; }
     const month = state.month;
@@ -1345,19 +1364,14 @@
       delete state.filters.issue;   // 이슈 번호가 바뀌므로
       renderSidebar();
       renderList();
-      toast(t('sum.saved'));
+      toast(t('report.done'));
     } catch (e) {
       state.summaryBusy = false;
       renderSidebar();
       if (state.month !== month) return;
       showError($('summary-error'), t('sum.failed', { e: e.message }));
     }
-  });
-  $('summary-copy-btn').addEventListener('click', async () => {
-    if (!state.summary) return;
-    try { await navigator.clipboard.writeText(summaryView().content); toast(t('sum.copied')); }
-    catch { toast(t('sum.copyFailed')); }
-  });
+  }
 
   // ───────────── CSV 내보내기 (지금 보이는 목록 그대로) ─────────────
   function csvCell(v) {

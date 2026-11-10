@@ -94,14 +94,14 @@ export const SUMMARY_SCHEMA = {
     },
     notes: {
       type: 'array',
-      description: '보고서에 꼭 남길 사실. 0~5개.',
+      description: '보고서에 꼭 남길 사실. 0~3개, 가장 중요한 것만.',
       items: {
         type: 'object',
         additionalProperties: false,
         required: ['customer', 'text', 'text_en'],
         properties: {
           customer: { type: 'string', description: '고객사 번호. 예) "com82171"' },
-          text: { type: 'string', description: '수치·경위·후속 조치를 한 문장으로. 예) "9월 초과 — 공유 링크 51개, 외부 약 140개 IP 가 원본 다운로드"' },
+          text: { type: 'string', description: '수치·경위·후속 조치를 짧은 한 문장(40자 안팎)으로. 예) "공유 링크 51개 · 외부 IP 140개가 원본 다운로드"' },
           text_en: { type: 'string', description: 'text 의 영어. 수치·고객사 번호는 그대로.' },
         },
       },
@@ -118,8 +118,8 @@ export const SUMMARY_SYSTEM = `당신은 Cloudike 기술팀의 월간 CS 보고�
 - ticket_indexes: 그 이슈에 속하는 CS 의 목록 번호. 한 CS 는 한 이슈에만 넣습니다. 어디에도 묶이지 않는 건은 "기타"로 묶지 말고 제외합니다.
 
 특이사항(notes):
-- 다음 달에도 기억해야 할 사실: 수치(용량·건수·IP 수), 경위, 완료된 후속 조치나 재발 방지 조치. 0~5개.
-- customer 는 고객사 번호, text 는 한 문장. 목록의 "특이사항"·"타임라인" 열에 있는 내용을 우선합니다.
+- 다음 달에도 기억해야 할 사실: 수치(용량·건수·IP 수), 경위, 완료된 후속 조치나 재발 방지 조치. 0~3개, 가장 중요한 것만.
+- customer 는 고객사 번호, text 는 짧은 한 문장(40자 안팎, 화면에 한 줄로 보임). 목록의 "특이사항"·"타임라인" 열에 있는 내용을 우선합니다.
 
 공통:
 - 목록에 없는 내용을 추가하지 않습니다. 추측 표현("~로 보임")은 목록에 근거가 있을 때만 씁니다.

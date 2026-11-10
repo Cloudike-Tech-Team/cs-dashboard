@@ -237,7 +237,7 @@ export type Issue = { label: string; detail: string; ticket_ids: string[] };
 export type Note = { customer: string; text: string };
 
 export const MAX_ISSUES = 5;
-export const MAX_NOTES = 5;
+export const MAX_NOTES = 3;
 
 // 구조화 출력이라 형태는 보장되지만 방어적으로 정리. 개수 제한은 여기서(스키마의 maxItems 는 미지원).
 export function normalizeSummary(raw: unknown): { issues: RawIssue[]; notes: Note[]; issuesEn: RawIssue[]; notesEn: Note[] } {

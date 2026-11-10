@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261110-4">
-  <link rel="stylesheet" href="css/style.css?v=20261110-4">
+  <meta name="app-version" content="20261110-5">
+  <link rel="stylesheet" href="css/style.css?v=20261110-5">
 </head>
 <body>
   <!-- 로그인 -->
@@ -118,22 +118,15 @@
         </div>
         <h2 class="report-title" data-i18n="report.title">월간 리포트</h2>
         <span id="report-count" class="muted"></span>
+        <span id="summary-meta" class="muted small"></span>
         <span class="r-actions">
           <button id="filter-clear" class="link-btn" type="button" hidden data-i18n="btn.filterClear">필터 해제 ×</button>
+          <button id="summary-gen-btn" class="btn small" type="button">AI 다시 분석</button>
           <button id="report-csv" class="btn small" type="button" data-i18n="report.csv">이 달 CSV</button>
         </span>
       </div>
+      <p id="summary-error" class="error" hidden></p>
       <div class="r-grid">
-        <div class="panel r-summary">
-          <h3><span data-i18n="report.summary">AI 월간 요약</span>
-            <span class="panel-head-actions">
-              <button id="summary-copy-btn" class="btn xs" type="button" hidden data-i18n="btn.copy">복사</button>
-              <button id="summary-gen-btn" class="btn xs" type="button">생성</button>
-            </span></h3>
-          <p id="summary-meta" class="muted small"></p>
-          <p id="summary-error" class="error" hidden></p>
-          <div id="summary-text" class="sumtext" hidden></div>
-        </div>
         <div class="panel">
           <h3 data-i18n="side.issues">주요 이슈 · 눌러서 필터</h3>
           <div id="issue-list" class="issue-list"></div>
@@ -255,9 +248,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261110-4"></script>
-  <script src="js/i18n.js?v=20261110-4"></script>
-  <script src="js/lib.js?v=20261110-4"></script>
-  <script src="js/app.js?v=20261110-4"></script>
+  <script src="js/config.js?v=20261110-5"></script>
+  <script src="js/i18n.js?v=20261110-5"></script>
+  <script src="js/lib.js?v=20261110-5"></script>
+  <script src="js/app.js?v=20261110-5"></script>
 </body>
 </html>

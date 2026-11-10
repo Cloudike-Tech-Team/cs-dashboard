@@ -90,6 +90,12 @@
     if (view === 'carry') return rows.filter((r) => isCarried(r, nowMonth));
     return rows.filter((r) => r.status !== 'done');
   }
+  // 목록을 이번 달(KST) 접수와 그 전 접수로 나눈다. 순서는 그대로
+  function splitByMonth(rows, nowMonth) {
+    const current = [], before = [];
+    rows.forEach((r) => (monthKST(r.received_at) === nowMonth ? current : before).push(r));
+    return { current, before };
+  }
   // sort: urgent(심각도 → 지연 상태 → 오래된 순) | oldest | recent. 원본 배열은 그대로
   function sortRows(rows, sort, yt) {
     const t = (r) => new Date(r.received_at).getTime();
@@ -357,7 +363,7 @@
   }
 
   return {
-    popupPlace, popupBig, applyFilters, actionCounts, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
+    popupPlace, popupBig, applyFilters, actionCounts, splitByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,

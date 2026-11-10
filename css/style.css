@@ -452,3 +452,6 @@ html[lang="en"] .popup-body .meta { grid-template-columns: 88px minmax(0, 1fr); 
 .seg.searching button.on b { color: var(--muted); }
 #paste-notes { margin: 8px 0 0; padding: 6px 10px; font-size: 13px; color: #92400E; background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 4px; }
 #paste-notes.error { color: var(--danger); background: #FEF2F2; border-color: #FCA5A5; }
+.month-group.this { background: #FFFFFF; border-top: 0; }
+.month-group.this strong { font-size: 13px; }
+.group-empty { margin: 0; padding: 14px 20px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line-2); }

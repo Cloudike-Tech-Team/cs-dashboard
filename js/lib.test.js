@@ -474,3 +474,9 @@ test('filterOptions: 종류별 값과 건수 (많은 순, 담당 미지정은 �
   assert.deepEqual(L.filterOptions(rows, 'severity', [], {}).map(([k]) => k), ['hotfix', 'critical', 'major', 'normal']);
   assert.deepEqual(L.filterOptions(rows, 'status', [], {})[0], ['open', 5]);
 });
+
+test('splitByMonth: 이번 달(KST) 접수와 그 전 접수로 나눈다 (순서 유지)', () => {
+  const rows = [row({ id: 'a', received_at: '2026-10-31T15:30:00Z' }), row({ id: 'b', received_at: '2026-10-12T00:00:00Z' }), row({ id: 'c', received_at: '2026-11-09T01:00:00Z' })];
+  const s = L.splitByMonth(rows, '2026-11');
+  assert.deepEqual([ids(s.current), ids(s.before)], [['a', 'c'], ['b']]);   // a 는 KST 11-01
+});

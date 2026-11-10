@@ -403,13 +403,14 @@
 
   // 행: 현상(굵게) + 아래 줄 고객사 · 기기 · 꼬리표 | CS 상태 | CS 담당 | 티켓(번호 · 트래커 상태 · 개발 담당) | 접수일 · 경과.
   // 왼쪽 띠 색 = 심각도 (보통은 없음). 올해가 아닌 건은 접수일에 연도(YY-MM-DD).
-  function rowNode(r) {
+  // grouped: 이번 달 / 지난달 이전 묶음 안이면 「이월」 꼬리표는 머리글과 겹치므로 생략
+  function rowNode(r, grouped = false) {
     const p = kstParts(new Date(r.received_at));
     const thisYear = currentMonthKST().slice(0, 4);
     const when = p.year !== thisYear ? `${p.year.slice(2)}-${p.month}-${p.day}` : `${p.month}-${p.day}`;
     const f = disp(r);
     const sk = L.severityOf(r, state.yt);
-    const carried = L.isCarried(r, currentMonthKST());
+    const carried = !grouped && L.isCarried(r, currentMonthKST());
     const mm = L.mismatch(r, state.yt);
     const age = ageNode(r);
     const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (state.selected === r.id ? ' active' : '') + (sk !== 'normal' ? ' sev' : '') },
@@ -469,6 +470,18 @@
     return n;
   }
 
+  // 미해결 · 전체 보기: 이번 달 접수를 먼저(없으면 「이번 달 접수 없음」), 그 아래 지난달 이전 접수
+  function monthGroups(rows) {
+    const cm = currentMonthKST();
+    const { current, before } = L.splitByMonth(rows, cm);
+    const head = (label, n, cls) => el('div', { class: 'hist-group month-group' + (cls ? ' ' + cls : '') }, el('strong', { text: label }), el('span', { class: 'mono', text: t('nCount', { n }) }));
+    return [
+      head(t('grp.thisMonth', { month: I.monthCount(state.lang, cm, true, '').trim() }), current.length, 'this'),
+      ...(current.length ? current.map((r) => rowNode(r)) : [el('p', { class: 'group-empty', text: t('grp.empty') })]),
+      ...(before.length ? [head(t('grp.before'), before.length), ...before.map((r) => rowNode(r, true))] : []),
+    ];
+  }
+
   // 목록: 보기(미해결 · 이월 · 전체 · 완료) → 필터 · 검색 → 정렬. 검색 중이면 접수 시기별로 묶는다
   function renderList() {
     renderViewBar();
@@ -481,7 +494,7 @@
         el('div', { class: 'hist-group', title: t('list.searchHint') }, el('strong', { text: L.recencyLabel(g.key, state.lang) }), el('span', { class: 'mono', text: t('nCount', { n: g.rows.length }) })),
         ...g.rows.map((r) => rowNode(r)),
       ])
-      : rows.map((r) => rowNode(r))));
+      : ['open', 'all'].includes(state.view) ? monthGroups(rows) : rows.map((r) => rowNode(r))));
     const view = q ? t('view.search') : t(`view.${state.view}`);
     $('list-title').textContent = rows.length === base.length ? t('list.count', { view, n: rows.length }) : t('list.countOf', { view, n: rows.length, total: base.length });
     renderFilterChips();

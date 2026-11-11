@@ -682,3 +682,4 @@ dialog::backdrop { background: rgba(10, 15, 25, .45); }
 @media (max-width: 640px) { .r-grid { grid-template-columns: minmax(0, 1fr); } .r-actions { margin-left: 0; } }
 .panel .note-line { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel .notes-list .link-btn { align-self: flex-start; padding: 2px 0; }
+#page-list { display: flex; flex-direction: column; gap: 14px; }

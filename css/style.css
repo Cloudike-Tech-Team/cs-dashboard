@@ -180,7 +180,7 @@ label { display: flex; flex-direction: column; gap: 4px; font-weight: 500; font-
 .notes-list .cust { font-weight: 600; color: var(--text); margin-right: 4px; }
 
 /* 목록: 현상 · 고객사 | CS 상태 | CS 담당 | 티켓 | 접수 · 경과 (표 최대 폭 1,400px) */
-.list-head, .cs-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px 96px 190px 92px; gap: 14px; align-items: center; max-width: 1400px; }
+.list-head, .cs-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px 128px 190px 92px; gap: 14px; align-items: center; max-width: 1400px; }
 .list-head {
   padding: 8px 20px; border-bottom: 1px solid var(--line);
   font-size: 12.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em;
@@ -309,7 +309,7 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; user-select:
 .list { container: list / inline-size; }
 .cs-row .age-inline { display: none; }
 @container list (max-width: 820px) {
-  .list .list-head, .list .cs-row { grid-template-columns: minmax(0, 1fr) 112px 96px; }
+  .list .list-head, .list .cs-row { grid-template-columns: minmax(0, 1fr) 112px 128px; }
   .cs-row .col-ticket, .cs-row .col-when, .list-head > span:nth-child(4), .list-head > span:nth-child(5) { display: none; }
   .cs-row .age-inline { display: inline; }
 }

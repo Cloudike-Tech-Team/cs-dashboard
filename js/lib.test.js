@@ -503,3 +503,42 @@ test('monthlyFlow: 끝 달까지 n 달, 0건 달 포함, 접수 · 그중 완료
   ]);
   assert.deepEqual(L.monthlyFlow([], '2026-02', 3).map((x) => x.ym), ['2025-12', '2026-01', '2026-02']);
 });
+
+test('partLang: 칸 · 이력 줄의 언어. 이력은 날짜 · 작성자를 떼고 내용만', () => {
+  assert.equal(L.partLang('로그인 실패'), 'ko');
+  assert.equal(L.partLang('PC client sync 안 됨'), 'ko');
+  assert.equal(L.partLang('Login fails'), 'en');
+  assert.equal(L.partLang('NRF-5031'), 'en');
+  assert.equal(L.partLang('11/12'), null);
+  assert.equal(L.partLang(''), null);
+  assert.equal(L.partLang('11/10 김지훈: Requested logs', true), 'en');
+  assert.equal(L.partLang('11/10 Jihoon Kim: 로그 요청', true), 'ko');
+  assert.equal(L.partLang('11/10 김지훈 로그 요청', true), 'ko');
+  assert.equal(L.partLang('Waiting for customer reply', true), 'en');
+});
+
+test('한국어 CS 에 영어 이력: 한국어 화면은 그 줄만 한국어 번역, 영어 화면은 그 줄 원문 그대로', () => {
+  const r = row({ title: '로그인 실패', description: '', notes: '', status_note: '', timeline: ['11/04 접수', '11/10 김지훈: Requested logs'] });
+  assert.equal(L.isSourceLang(r, 'ko'), false);
+  assert.equal(L.isSourceLang(r, 'en'), false);
+  assert.equal(L.needsTranslation(r, 'h', {}, 'ko'), true);
+  const tr = {
+    ko: { source_hash: 'h', fields: { title: '로그인 실패함', description: '', notes: '', status_note: '', timeline: ['11/04 접수됨', '11/10 김지훈: 로그 요청'] } },
+    en: { source_hash: 'h', fields: { title: 'Login fails', description: '', notes: '', status_note: '', timeline: ['11/04 Received', '11/10 Jihoon Kim: Requested the logs'] } },
+  };
+  const ko = L.displayFields(r, 'h', tr, 'ko');
+  assert.equal(ko.title, '로그인 실패');                                     // 한국어로 쓴 칸은 원문
+  assert.deepEqual(ko.timeline, ['11/04 접수', '11/10 김지훈: 로그 요청']);   // 영어 줄만 번역
+  assert.equal(ko.translated, true);
+  const en = L.displayFields(r, 'h', tr, 'en');
+  assert.equal(en.title, 'Login fails');
+  assert.deepEqual(en.timeline, ['11/04 Received', '11/10 김지훈: Requested logs']);   // 영어로 쓴 줄은 원문 그대로
+});
+
+test('영어 CS 에 한국어 이력: 영어 화면은 그 줄만 영어 번역', () => {
+  const r = row({ title: 'Sync stops', description: '', notes: '', status_note: '', timeline: ['11/10 Hannah: 로그 요청'] });
+  const tr = { en: { source_hash: 'h', fields: { title: 'Sync stopped', description: '', notes: '', status_note: '', timeline: ['11/10 Hannah: Requested logs'] } } };
+  const en = L.displayFields(r, 'h', tr, 'en');
+  assert.equal(en.title, 'Sync stops');
+  assert.deepEqual(en.timeline, ['11/10 Hannah: Requested logs']);
+});

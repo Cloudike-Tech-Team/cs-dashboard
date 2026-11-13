@@ -358,19 +358,35 @@ function keepsTokens(orig: string, tr: string): boolean {
   return KEEP_RES.every((re) => (orig.match(re) || []).every((tok) => t.includes(squash(tok))));
 }
 
+// 칸 · 이력 한 줄의 언어: 한글이 있으면 ko, 영문자만 있으면 en, 둘 다 없으면 null.
+// 이력은 날짜와 「작성자:」를 떼고 내용만 본다. js/lib.js 의 partLang 과 같은 규칙
+const HANGUL = /[\uAC00-\uD7A3\u3131-\u318E]/;
+export function partLang(text: string, isTimeline = false): 'ko' | 'en' | null {
+  let s = String(text || '');
+  if (isTimeline) {
+    s = splitTimelinePrefix(s).text;
+    const m = s.match(/^\s*[^:：\n]{1,30}[:：]\s*(\S[\s\S]*)$/);
+    if (m) s = m[1];
+  }
+  if (HANGUL.test(s)) return 'ko';
+  return /[A-Za-z]/.test(s) ? 'en' : null;
+}
+
 const SCALARS = ['title', 'description', 'notes', 'status_note'] as const;
-function pickLang(raw: unknown, orig: TrSource): TrFields {
+// 이미 그 언어로 쓴 칸 · 이력 줄은 모델 출력 대신 원문을 그대로 저장한다 (영어로 쓴 이력은 영어판에 그대로, 한국어판에는 번역)
+function pickLang(raw: unknown, orig: TrSource, lang: 'ko' | 'en'): TrFields {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const out = {} as TrFields;
   for (const k of SCALARS) {
     const src = orig[k] || '';
     const v = typeof o[k] === 'string' ? (o[k] as string).trim() : '';
-    out[k] = !src ? '' : v && keepsTokens(src, v) ? v : src;
+    out[k] = !src ? '' : partLang(src) === lang ? src : v && keepsTokens(src, v) ? v : src;
   }
   const tl = orig.timeline || [];
   const got = Array.isArray(o.timeline) ? o.timeline : null;
   out.timeline = got && got.length === tl.length && got.every((x) => typeof x === 'string')
     ? tl.map((entry, i) => {
+      if (partLang(entry, true) === lang) return entry;
       const { prefix, text } = splitTimelinePrefix(entry);
       const v = (got[i] as string).trim();
       return v && keepsTokens(text, v) ? prefix + v : entry;
@@ -388,7 +404,7 @@ export function normalizeTranslation(raw: unknown, rows: TrSource[]): Map<string
     const { index, ko, en } = it as { index?: unknown; ko?: unknown; en?: unknown };
     const row = typeof index === 'number' && Number.isInteger(index) ? rows[index - 1] : undefined;
     if (!row || out.has(row.id)) continue;
-    out.set(row.id, { ko: pickLang(ko, row), en: pickLang(en, row) });
+    out.set(row.id, { ko: pickLang(ko, row, 'ko'), en: pickLang(en, row, 'en') });
   }
   return out;
 }

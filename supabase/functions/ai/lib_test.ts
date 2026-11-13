@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, partLang, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
   maskEmails, normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
@@ -307,12 +307,12 @@ Deno.test('translateInChunks: 출력이 잘리면 반으로 나눠 다시, 한 �
   const call = async (chunk: typeof rows) => {
     calls.push(chunk.map((r) => r.id));
     if (chunk.some((r) => r.id === 'long')) throw new Truncated();
-    return { items: chunk.map((r, i) => ({ index: i + 1, ko: { title: r.title }, en: { title: r.title + '!' } })) };
+    return { items: chunk.map((r, i) => ({ index: i + 1, ko: { title: r.title + '!' }, en: { title: r.title } })) };
   };
   const { got, tooLong } = await translateInChunks(rows, call, 10, 1000);
   assertEquals([...got.keys()].sort(), ['a', 'b', 'c']);
   assertEquals(tooLong.map((r) => r.id), ['long']);
-  assertEquals(got.get('c')!.en.title, 'xxxxxxxxxx!');
+  assertEquals(got.get('c')!.ko.title, 'xxxxxxxxxx!');   // 영어 원문 → 한국어판만 모델 출력
   assertEquals(calls[0], ['a', 'b', 'long', 'c']);
 });
 
@@ -346,4 +346,26 @@ Deno.test('validateRequest: parse 원문의 메일 주소는 Claude 에 보내�
 Deno.test('normalizeParsed: 결과 필드의 메일 주소도 가린다', () => {
   const p = normalizeParsed({ reporter: 'kim@a.com', customer: 'com 831 / hong@cloudike.io', title: 'x@y.com 로그인', description: 'd@e.org', notes: 'n@m.net', timeline: ['11-04 t@u.io 회신'] });
   assertEquals([p.reporter, p.customer, p.title, p.description, p.notes, p.timeline[0]], ['k***@a***', 'com 831 / h***@c***', 'x***@y*** 로그인', 'd***@e***', 'n***@m***', '11-04 t***@u*** 회신']);
+});
+
+Deno.test('partLang: js/lib.js 와 같은 규칙 (이력은 날짜 · 작성자를 떼고 내용만)', () => {
+  assertEquals(partLang('로그인 실패'), 'ko');
+  assertEquals(partLang('PC client sync 안 됨'), 'ko');
+  assertEquals(partLang('Login fails'), 'en');
+  assertEquals(partLang('11/12'), null);
+  assertEquals(partLang('11/10 김지훈: Requested logs', true), 'en');
+  assertEquals(partLang('11/10 14:20 Jihoon Kim: 로그 요청', true), 'ko');
+});
+
+Deno.test('normalizeTranslation: 이미 그 언어로 쓴 칸 · 이력 줄은 모델 출력과 상관없이 원문 그대로', () => {
+  const r = { id: 'm1', title: '로그인 실패', description: '', notes: '', status_note: '', timeline: ['11/04 접수', '11/10 김지훈: Requested logs'] };
+  const m = normalizeTranslation({ items: [{
+    index: 1,
+    ko: { title: '로그인 실패함', description: '', notes: '', status_note: '', timeline: ['접수됨', '김지훈: 로그 요청'] },
+    en: { title: 'Login fails', description: '', notes: '', status_note: '', timeline: ['Received', 'Jihoon Kim: Requested the logs'] },
+  }] }, [r]);
+  assertEquals(m.get('m1')!.ko.title, '로그인 실패');
+  assertEquals(m.get('m1')!.ko.timeline, ['11/04 접수', '11/10 김지훈: 로그 요청']);
+  assertEquals(m.get('m1')!.en.title, 'Login fails');
+  assertEquals(m.get('m1')!.en.timeline, ['11/04 Received', '11/10 김지훈: Requested logs']);
 });

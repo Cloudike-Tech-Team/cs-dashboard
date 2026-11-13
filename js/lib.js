@@ -337,8 +337,25 @@
   const HANGUL = /[\uAC00-\uD7A3\u3131-\u318E]/;
   function hasHangul(row) { return HANGUL.test(sourceText(row)); }
   function isBlank(row) { return !row.title && !row.description && !row.notes && !row.status_note && !(row.timeline || []).length; }
-  // 원문이 이미 화면 언어인 기록 (한글이 있으면 한국어로, 없으면 영어로 쓴 것으로 본다)
-  function isSourceLang(row, lang) { return lang === 'ko' ? hasHangul(row) : !hasHangul(row); }
+  // 칸 · 이력 한 줄의 언어: 한글이 있으면 ko, 영문자만 있으면 en, 둘 다 없으면(번호 · 날짜뿐) null.
+  // 이력은 「MM/DD 작성자: 내용」이라 날짜와 작성자를 떼고 내용만 본다 (한국 이름 때문에 영어 이력이 한국어로 잡히지 않게)
+  // 규칙을 바꾸면 supabase/functions/ai/lib.ts 의 partLang 도 같이 바꾼다
+  function partLang(text, isTimeline = false) {
+    let s = String(text || '');
+    if (isTimeline) {
+      s = splitTimeline(s).text;
+      const m = s.match(/^\s*[^:：\n]{1,30}[:：]\s*(\S[\s\S]*)$/);
+      if (m) s = m[1];
+    }
+    if (HANGUL.test(s)) return 'ko';
+    return /[A-Za-z]/.test(s) ? 'en' : null;
+  }
+  // 칸마다 [원문, 이력 줄인지]
+  function trParts(row) {
+    return [...['title', 'description', 'notes', 'status_note'].map((k) => [row[k] || '', false]), ...(row.timeline || []).map((x) => [x, true])];
+  }
+  // 원문이 모두 화면 언어인 기록. 한국어 CS 에 영어 이력이 섞이면 어느 화면에서도 아님 (섞인 줄만 번역해서 보인다)
+  function isSourceLang(row, lang) { return trParts(row).every(([x, tl]) => { const l = partLang(x, tl); return !l || l === lang; }); }
   function needsTranslation(row, hash, trByLang, lang) {
     if (isBlank(row)) return false;
     if (isSourceLang(row, lang)) return false;   // 원문 언어 화면에서는 번역 불필요
@@ -351,7 +368,12 @@
     const tr = trByLang && trByLang[lang];
     // 원문 언어 화면에서는 모델이 다시 쓴 문장 대신 항상 원문
     if (!tr || tr.source_hash !== hash || !tr.fields || isSourceLang(row, lang)) return { ...orig, translated: false };
-    const f = { ...orig, ...tr.fields, timeline: Array.isArray(tr.fields.timeline) ? tr.fields.timeline : orig.timeline };
+    // 칸 · 이력 줄마다: 이미 화면 언어로 쓴 것은 원문 그대로, 다른 언어로 쓴 것만 번역
+    const pick = (o, v, tl) => { const l = partLang(o, tl); return !l || l === lang || typeof v !== 'string' ? o : v; };
+    const f = { ...orig };
+    ['title', 'description', 'notes', 'status_note'].forEach((k) => { f[k] = pick(orig[k], tr.fields[k], false); });
+    const ttl = Array.isArray(tr.fields.timeline) && tr.fields.timeline.length === orig.timeline.length ? tr.fields.timeline : null;
+    f.timeline = orig.timeline.map((x, i) => (ttl ? pick(x, ttl[i], true) : x));
     return { ...f, translated: JSON.stringify(TR_FIELDS.map((k) => f[k])) !== JSON.stringify(TR_FIELDS.map((k) => orig[k])) };
   }
 
@@ -391,7 +413,7 @@
     popupPlace, popupBig, applyFilters, actionCounts, splitByMonth, groupByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
-    TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
+    TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, partLang, isSourceLang, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
     STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, ageDays, monthKST, carryMonths, monthlyFlow, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,

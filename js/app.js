@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261113-4';
+  const APP_VERSION = '20261113-5';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -574,7 +574,8 @@
     if (sk !== 'normal') head.append(sevBadge(r));
     head.append(el('h2', { class: 'detail-title', text: f.title || t('list.noTitle') }));
     if (shown.translated) {
-      const src = t(L.hasHangul(r) ? 'lang.ko' : 'lang.en');
+      // 번역해서 보이는 칸은 늘 화면과 다른 언어로 쓴 것 (같은 언어로 쓴 칸은 원문 그대로)
+      const src = t(state.lang === 'ko' ? 'lang.en' : 'lang.ko');
       const bar = el('div', { class: 'tr-bar' }, el('span', { text: full && state.showOriginal ? t('tr.original', { lang: src }) : t('tr.from', { lang: src }) }));
       if (full) {
         const tg = el('button', { type: 'button', class: 'link-btn', text: state.showOriginal ? t('tr.showTranslation') : t('tr.showOriginal') });

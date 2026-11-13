@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261110-5">
-  <link rel="stylesheet" href="css/style.css?v=20261110-5">
+  <meta name="app-version" content="20261113-4">
+  <link rel="stylesheet" href="css/style.css?v=20261113-4">
 </head>
 <body>
   <!-- 로그인 -->
@@ -153,6 +153,14 @@
           <p class="backfill-row"><span id="backfill-status" class="muted small"></span><button id="backfill-btn" class="btn xs" type="button" data-i18n="bf.start">번역 시작</button></p>
         </div>
       </div>
+      <!-- 월별 접수 처리 그래프: 최대 12개월(기록 전 빈 달은 뺌). 막대를 누르면 그 달 리포트로. 리포트 맨 아래, 제목을 눌러 접기(이 브라우저에 기억) -->
+      <div id="flow-panel" class="panel flow-panel">
+        <h3><button id="flow-toggle" class="flow-toggle" type="button" aria-expanded="true" aria-controls="flow-body"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg><span data-i18n="flow.title">월별 접수 처리 그래프</span></button><span id="flow-sum" class="muted small"></span></h3>
+        <div id="flow-body" class="flow-body">
+        <div class="flow-legend small"><span><i class="sw done"></i><span data-i18n="flow.done">완료</span></span><span><i class="sw rest"></i><span data-i18n="flow.rest">미완료</span></span><span class="muted" data-i18n="flow.hint">접수 월 기준 · 막대를 누르면 그 달로</span></div>
+        <div id="flow-chart" class="flow-chart" role="list"></div>
+        </div>
+      </div>
     </section>
     </main>
   </section>
@@ -248,9 +256,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261110-5"></script>
-  <script src="js/i18n.js?v=20261110-5"></script>
-  <script src="js/lib.js?v=20261110-5"></script>
-  <script src="js/app.js?v=20261110-5"></script>
+  <script src="js/config.js?v=20261113-4"></script>
+  <script src="js/i18n.js?v=20261113-4"></script>
+  <script src="js/lib.js?v=20261113-4"></script>
+  <script src="js/app.js?v=20261113-4"></script>
 </body>
 </html>

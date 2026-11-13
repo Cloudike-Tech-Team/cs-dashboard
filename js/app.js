@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261110-5';
+  const APP_VERSION = '20261113-4';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -913,6 +913,8 @@
       return b;
     }));
 
+    renderFlow();
+
     // 특이사항
     const notesBox = $('notes-list');
     const notes = view.notes;
@@ -924,6 +926,46 @@
         ...(notes.length > NOTES_SHOWN ? [moreNotesBtn(notes.length - NOTES_SHOWN)] : [])]
       : [el('p', { class: 'muted', text: busyHere ? t('report.analyzing') : s ? t('common.none') : '—' })]));
   }
+  // 월별 접수 처리 그래프 (최대 12개월, 보고 있는 달이 그보다 이전이면 그 달까지). 접수 = 막대 전체, 그중 완료 = 초록
+  function renderFlow() {
+    const now = currentMonthKST();
+    const end = state.month < shiftMonth(now, -11) ? shiftMonth(state.month, 11) : now;
+    // 기록이 시작되기 전의 빈 달은 빼되 최소 6개월은 보인다
+    const all = L.monthlyFlow(state.all, end, 12);
+    const first = all.findIndex((x) => x.received);
+    const flow = all.slice(Math.min(first < 0 ? 6 : first, 6));
+    const recv = flow.reduce((a, x) => a + x.received, 0), done = flow.reduce((a, x) => a + x.done, 0);
+    $('flow-sum').textContent = t('flow.sum', { months: flow.length, n: recv, done, pct: recv ? Math.round((done / recv) * 100) : 0 });
+    $('flow-chart').style.gridTemplateColumns = `repeat(${flow.length}, minmax(0, 1fr))`;
+    const max = Math.max(1, ...flow.map((x) => x.received));
+    $('flow-chart').replaceChildren(...flow.map((x) => {
+      const pct = x.received ? Math.round((x.done / x.received) * 100) : 0;
+      const tip = t('flow.tip', { ym: x.ym, n: x.received, done: x.done, open: x.received - x.done, pct });
+      const stack = el('span', { class: 'flow-stack', 'aria-hidden': 'true' });
+      stack.style.height = `${(x.received / max) * 100}%`;
+      if (x.received > x.done) { const r = el('span', { class: 'rest' }); r.style.flexGrow = String(x.received - x.done); stack.append(r); }
+      if (x.done) { const d = el('span', { class: 'done' }); d.style.flexGrow = String(x.done); stack.append(d); }
+      const b = el('button', { type: 'button', role: 'listitem', class: 'flow-col' + (x.ym === state.month ? ' active' : ''), title: tip, 'aria-label': tip },
+        el('span', { class: 'flow-val' }, el('b', { class: 'mono', text: String(x.received) }), el('span', { class: 'muted', text: x.received ? t('flow.doneN', { n: x.done }) : '\u00a0' })),
+        el('span', { class: 'flow-plot' }, stack),
+        el('span', { class: 'flow-ym mono', text: x.ym.slice(5) === '01' || x === flow[0] ? x.ym.replace('-', '.') : x.ym.slice(5) }));
+      b.addEventListener('click', () => { if (x.ym !== state.month) changeMonth(x.ym); });
+      return b;
+    }));
+  }
+  // 그래프 접기 · 펼치기 (이 브라우저에 기억)
+  const LS_FLOW = 'cs.flowCollapsed';
+  function setFlowOpen(open) {
+    $('flow-body').hidden = !open;
+    $('flow-toggle').setAttribute('aria-expanded', String(open));
+    $('flow-panel').classList.toggle('collapsed', !open);
+  }
+  try { setFlowOpen(localStorage.getItem(LS_FLOW) !== '1'); } catch { setFlowOpen(true); }
+  $('flow-toggle').addEventListener('click', () => {
+    const open = $('flow-body').hidden;
+    setFlowOpen(open);
+    try { localStorage.setItem(LS_FLOW, open ? '0' : '1'); } catch { /* 무시 */ }
+  });
   const NOTES_SHOWN = 3;
   let notesOpen = false;
   function moreNotesBtn(n) {

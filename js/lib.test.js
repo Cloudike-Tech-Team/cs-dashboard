@@ -487,3 +487,19 @@ test('groupByMonth: 이번 달을 맨 위(비어도), 나머지는 최근 달부
   assert.deepEqual(g.map((x) => [x.ym, ids(x.rows)]), [['2026-11', ['c']], ['2026-10', ['a', 'd']], ['2026-09', ['b']]]);   // c 는 KST 11-01
   assert.deepEqual(L.groupByMonth([], '2026-11').map((x) => [x.ym, x.rows.length]), [['2026-11', 0]]);
 });
+
+test('monthlyFlow: 끝 달까지 n 달, 0건 달 포함, 접수 · 그중 완료', () => {
+  const rows = [
+    row({ received_at: '2026-10-12T05:47:00Z', status: 'done' }),
+    row({ received_at: '2026-10-20T05:47:00Z' }),
+    row({ received_at: '2026-09-30T15:30:00Z', status: 'done' }),   // KST 10월 1일
+    row({ received_at: '2026-08-01T00:00:00Z' }),
+    row({ received_at: '2025-01-01T00:00:00Z', status: 'done' }),   // 범위 밖
+  ];
+  assert.deepEqual(L.monthlyFlow(rows, '2026-10', 3), [
+    { ym: '2026-08', received: 1, done: 0 },
+    { ym: '2026-09', received: 0, done: 0 },
+    { ym: '2026-10', received: 3, done: 2 },
+  ]);
+  assert.deepEqual(L.monthlyFlow([], '2026-02', 3).map((x) => x.ym), ['2025-12', '2026-01', '2026-02']);
+});

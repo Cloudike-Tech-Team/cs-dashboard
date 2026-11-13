@@ -677,9 +677,40 @@ dialog::backdrop { background: rgba(10, 15, 25, .45); }
 .panel .backfill-row { padding: 0; }
 .tabs .tab { font: inherit; cursor: pointer; background: none; }
 .tabs .tab.active { background: var(--panel); color: var(--text); }
-.r-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 1100px) { .r-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 넓은 화면은 패널 5개를 한 줄로, 좁아지면 두 줄(3칸) → 2칸 → 1칸 */
+.r-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.r-grid .backfill-box { grid-column: 1 / -1; }
+.r-grid .panel .device-btn { grid-template-columns: minmax(56px, 42%) minmax(0, 1fr) 28px; }
+@media (max-width: 1400px) { .r-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .r-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .r-grid { grid-template-columns: minmax(0, 1fr); } .r-actions { margin-left: 0; } }
 .panel .note-line { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .panel .notes-list .link-btn { align-self: flex-start; padding: 2px 0; }
 #page-list { display: flex; flex-direction: column; gap: 14px; }
+
+/* 월별 접수 처리 그래프 (월간 리포트 맨 아래, 제목을 눌러 접기) */
+.flow-toggle { font: inherit; font-weight: 700; color: var(--text); background: none; border: 0; padding: 2px 4px 2px 0; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; }
+.flow-toggle:hover { color: var(--accent-ink); }
+.flow-toggle svg { transition: transform .15s; }
+.flow-panel.collapsed .flow-toggle svg { transform: rotate(-90deg); }
+.flow-body { display: flex; flex-direction: column; gap: 10px; }
+.flow-legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; color: var(--text-2); }
+.flow-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.flow-legend .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.flow-legend .sw.done, .flow-stack .done { background: var(--c-done); }
+.flow-legend .sw.rest, .flow-stack .rest { background: var(--line-strong); }
+.flow-legend .muted { margin-left: auto; }
+.flow-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+.flow-col { font: inherit; background: none; border: 0; border-radius: 8px; padding: 6px 2px 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text); min-width: 0; }
+.flow-col:hover { background: var(--panel); }
+.flow-col.active { background: var(--accent-soft); }
+.flow-col.active .flow-ym { color: var(--accent-ink); font-weight: 600; }
+.flow-val { display: flex; flex-direction: column; align-items: center; line-height: 1.25; white-space: nowrap; }
+.flow-val b { font-size: 13px; font-weight: 600; }
+.flow-val .muted { font-size: 11px; }
+.flow-plot { height: 120px; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.flow-stack { width: min(28px, 70%); min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.flow-stack > span { min-height: 2px; }
+.flow-stack > span:first-child { border-radius: 4px 4px 0 0; }
+.flow-ym { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 640px) { .flow-val .muted { font-size: 10px; } .flow-plot { height: 90px; } .flow-legend .muted { margin-left: 0; } }

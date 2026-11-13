@@ -187,6 +187,24 @@
     return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }
 
+  // 월별 접수 · 처리 그래프: endYm 까지 n 달(오래된 달부터, 0건 달도 포함).
+  // 완료일은 따로 저장하지 않으므로 「그 달 접수한 CS 중 지금 완료된 건」을 처리로 센다. [{ ym, received, done }]
+  function monthlyFlow(rows, endYm, n = 12) {
+    const [y, m] = endYm.split('-').map(Number);
+    const months = Array.from({ length: n }, (_, i) => {
+      const d = new Date(Date.UTC(y, m - n + i, 1));
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    });
+    const by = new Map(months.map((ym) => [ym, { ym, received: 0, done: 0 }]));
+    rows.forEach((r) => {
+      const b = by.get(monthKST(r.received_at));
+      if (!b) return;
+      b.received++;
+      if (r.status === 'done') b.done++;
+    });
+    return months.map((ym) => by.get(ym));
+  }
+
   // 전체 기간 검색 결과의 기간 묶음. 오늘 기준, 겹치지 않게: 이번 달(KST 달력) → 최근 30일 → 최근 1년 → 그 이전.
   const RECENCY = [
     { key: 'month', label: '이번 달', en: 'This month' },
@@ -375,7 +393,7 @@
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
-    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, ageDays, monthKST, carryMonths, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, ageDays, monthKST, carryMonths, monthlyFlow, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

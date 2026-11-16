@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261113-5';
+  const APP_VERSION = '20261116-1';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -63,6 +63,11 @@
     trError: '',
     showOriginal: false,       // 상세에서 「원문 보기」를 누른 상태
     backfill: { remaining: 0, running: false, msg: '' },
+    me: '',                    // 이 브라우저에서 고른 「나」(CS 담당 이름). 「내 담당」 보기 · 자동 이력 작성자
+    userId: null,              // 로그인 사용자 id (실시간 변경이 내 것인지 가리기)
+    doneAsk: null,             // 완료 한 줄 메모를 묻는 중인 CS id
+    replies: {},               // 고객 회신 초안 { [id]: { lang, text, busy, error } } (저장하지 않음)
+    live: {},                  // 다른 사람이 방금 바꾼 CS { [id]: 시각 } — 목록에서 잠깐 표시
   };
   function t(key, params) { return I.t(state.lang, key, params); }
   const PAGE = 1000;           // PostgREST 기본 max-rows
@@ -147,10 +152,13 @@
     signedInAs = email;
     if (session) {
       $('user-email').textContent = email || '';
+      state.userId = session.user.id;
       loadAssignees();
       loadAll();
       checkBackfill();
+      subscribeLive();
     } else {
+      unsubscribeLive();
       [...popups.keys()].forEach(closePopup);
       state.all = [];
       state.rows = [];
@@ -249,6 +257,7 @@
     renderList();
     renderDetail();
     renderNameList();
+    renderMe();
   }
 
   // 한 번에 1000건(PostgREST 기본 max-rows)이 넘어도 잘리지 않도록 페이지 단위로 모두 가져옴
@@ -278,17 +287,56 @@
   function replaceRow(row) {
     const idx = state.all.findIndex((x) => x.id === row.id);
     if (idx >= 0) state.all[idx] = row;
+    else state.all.unshift(row);   // 다른 사람이 방금 등록한 CS (실시간)
     deriveMonth();
   }
 
+  // ───────────── 실시간 반영 (cs_tickets 의 바뀐 행만 받는다. 전체를 다시 읽지 않음) ─────────────
+  let liveChannel = null;
+  function subscribeLive() {
+    if (liveChannel || !sb.channel) return;
+    liveChannel = sb.channel('cs_tickets_live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cs_tickets' }, onLiveChange)
+      .subscribe();
+  }
+  function unsubscribeLive() {
+    if (liveChannel) { sb.removeChannel(liveChannel); liveChannel = null; }
+  }
+  function onLiveChange(payload) {
+    if (payload.eventType === 'DELETE') {
+      const id = payload.old && payload.old.id;
+      if (!id || !state.all.some((r) => r.id === id)) return;
+      state.all = state.all.filter((r) => r.id !== id);
+      if (state.selected === id) state.selected = null;
+      deriveMonth();
+      renderAll();
+      return;
+    }
+    const row = payload.new;
+    if (!row || !row.id) return;
+    const cur = state.all.find((r) => r.id === row.id);
+    if (cur && cur.updated_at === row.updated_at) return;   // 내가 저장해 이미 반영한 것
+    replaceRow(row);
+    if (row.updated_by && row.updated_by !== state.userId) {
+      state.live[row.id] = Date.now();
+      toast(t(cur ? 'live.changed' : 'live.added', { title: row.title || t('list.noTitle') }));
+      setTimeout(() => { delete state.live[row.id]; renderList(); }, 8000);
+    }
+    renderAll();
+    loadTranslations([row]);
+    loadTickets({ rows: [row] });
+  }
+
   // ───────────── 보기 · 정렬 · 검색 ─────────────
-  const VIEWS = ['open', 'carry', 'all', 'done'];
+  const VIEWS = ['open', 'mine', 'carry', 'all', 'done'];
   const SORTS = ['urgent', 'oldest', 'recent'];
+  const LS_ME = 'cs.me';            // 「나」로 고른 CS 담당 이름 (이 브라우저만)
   const LS_LIST = 'cs.listPrefs';   // 마지막으로 고른 보기 · 정렬 · 검색 범위 (이 브라우저만)
   try {
     const p = JSON.parse(localStorage.getItem(LS_LIST) || '{}');
     if (VIEWS.includes(p.view)) state.view = p.view;
     if (SORTS.includes(p.sort)) state.sort = p.sort;
+    state.me = localStorage.getItem(LS_ME) || '';
   } catch { /* 무시 */ }
   function saveListPrefs() { try { localStorage.setItem(LS_LIST, JSON.stringify({ view: state.view, sort: state.sort })); } catch { /* 무시 */ } }
   function searchQuery() { return $('search-input').value.trim(); }
@@ -298,7 +346,7 @@
   function listView() { return searchQuery() ? 'all' : state.view; }
   // 필터 · 검색어를 걸기 전 목록 (보기 + 검색 범위). 상태 칩 · 필터 메뉴 건수도 이 기준
   function baseRows() {
-    const rows = L.viewRows(state.all, listView(), currentMonthKST());
+    const rows = L.viewRows(state.all, listView(), currentMonthKST(), state.me);
     return state.listMonth ? rows.filter((r) => L.monthKST(r.received_at) === state.listMonth) : rows;
   }
   // 검색어까지 건 목록 (필터 전). 상태 칩 · 필터 메뉴 건수의 기준
@@ -311,14 +359,34 @@
   }
 
   function renderViewBar() {
-    const counts = Object.fromEntries(VIEWS.map((v) => [v, L.viewRows(state.all, v, currentMonthKST()).length]));
+    const counts = Object.fromEntries(VIEWS.map((v) => [v, L.viewRows(state.all, v, currentMonthKST(), state.me).length]));
     $('view-tabs').replaceChildren(...VIEWS.map((v) => {
-      const b = el('button', { type: 'button', class: state.view === v ? 'on' : '', 'aria-pressed': String(state.view === v) },
-        el('span', { text: t(`view.${v}`) }), el('b', { text: String(counts[v]) }));
-      b.addEventListener('click', () => setView(v));
+      const noMe = v === 'mine' && !state.me;
+      const b = el('button', { type: 'button', class: state.view === v ? 'on' : '', 'aria-pressed': String(state.view === v), title: v === 'mine' ? (state.me ? t('view.mineTitle', { name: state.me }) : t('me.pickFirst')) : '' },
+        el('span', { text: t(`view.${v}`) }), el('b', { text: noMe ? '—' : String(counts[v]) }));
+      b.addEventListener('click', () => {
+        if (noMe) { toast(t('me.pickFirst')); $('me-select').focus(); return; }
+        setView(v);
+      });
       return b;
     }));
   }
+  // 상단 「나」: CS 담당 명단에서 한 번 고르면 이 브라우저에 기억 (DB 에 저장하지 않음)
+  function renderMe() {
+    const sel = $('me-select');
+    const names = state.me && !state.assignees.includes(state.me) ? [...state.assignees, state.me] : state.assignees;
+    sel.replaceChildren(el('option', { value: '', text: t('me.none') }), ...names.map((n) => el('option', { value: n, text: t('me.is', { name: n }) })));
+    sel.value = state.me;
+  }
+  $('me-select').addEventListener('change', () => {
+    state.me = $('me-select').value;
+    try { if (state.me) localStorage.setItem(LS_ME, state.me); else localStorage.removeItem(LS_ME); } catch { /* 무시 */ }
+    if (!state.me && state.view === 'mine') state.view = 'open';
+    renderCards();
+    renderList();
+  });
+  // 자동 이력에 남길 이름: 고른 「나」, 없으면 로그인 메일의 앞부분
+  function whoAmI() { return state.me || (signedInAs || '').split('@')[0]; }
   function setView(v) {
     if (state.view === v) return;
     state.view = v;
@@ -399,8 +467,11 @@
   function ageNode(r) {
     const a = L.ageInfo(r);
     if (!a) return null;
-    const text = a.days === 0 ? t('age.today') : t(a.overdue ? 'age.overdue' : 'age.days', { n: a.days });
-    return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: t('age.title', { n: a.days, d: L.OVERDUE_DAYS }) });
+    // 대기 · 배포대기: 「배포대기 13일」(회색) · 7일 넘게 손대지 않음: 「소식 없음 9일」(빨강) · 그 외: 「3일 전 갱신」
+    const text = a.waiting ? t('age.wait', { st: L.statusName(r.status, state.lang), n: a.days })
+      : a.overdue ? t('age.stale', { n: a.days })
+      : a.days === 0 ? t('age.today') : t('age.updated', { n: a.days });
+    return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: t('age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }) });
   }
   function receivedNode(r) {
     const age = ageNode(r);
@@ -427,7 +498,7 @@
     const carried = !grouped && L.isCarried(r, currentMonthKST());
     const mm = L.mismatch(r, state.yt);
     const age = ageNode(r);
-    const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (state.selected === r.id ? ' active' : '') + (sk !== 'normal' ? ' sev' : '') },
+    const b = el('div', { role: 'button', tabindex: '0', class: 'cs-row' + (state.selected === r.id ? ' active' : '') + (sk !== 'normal' ? ' sev' : '') + (state.live[r.id] ? ' live' : '') },
       el('span', { class: 'col-main' },
         el('span', { class: 'line1' }, sk !== 'normal' ? sevBadge(r) : null, el('span', { class: 'row-title', text: f.title || t('list.noTitle'), title: f.title || '' })),
         el('span', { class: 'line2' },
@@ -436,7 +507,9 @@
           age ? el('span', { class: 'age-inline' }, ageNode(r)) : null,
           carried ? el('span', { class: 'row-tag', text: t('tag.carry'), title: t('tag.carryTitle') }) : null,
           f.status_note ? el('span', { class: 'row-tag note', text: f.status_note }) : null,
-          mm ? el('span', { class: 'row-tag warn', text: t(`mm.${mm}`), title: t(`mm.${mm}Title`) }) : null)),
+          mm ? el('span', { class: 'row-tag warn', text: t(`mm.${mm}`), title: t(`mm.${mm}Title`) }) : null,
+          mm === 'ticketDone' ? quickDoneBtn(r) : null,
+          state.live[r.id] ? el('span', { class: 'row-tag live', text: t('live.tag') }) : null)),
       el('span', { class: 'col-status' }, statusPill(r)),
       // 담당이 없는 미해결은 눈에 띄게
       el('span', { class: 'col-asg' + (r.assignee ? '' : r.status === 'done' ? ' none' : ' none warn'), title: L.assigneeLine(r, state.yt, state.lang) },
@@ -452,6 +525,21 @@
       if (e.target === b && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectRow(r.id); }
     });
     return b;
+  }
+  // 「티켓 완료 · CS 상태 확인」 옆 「CS도 완료로」: 상세를 열고 완료 한 줄 메모를 바로 묻는다
+  function quickDoneBtn(r) {
+    const b = el('button', { type: 'button', class: 'quick-done', text: t('mm.quickDone'), title: t('mm.quickDoneTitle') });
+    b.addEventListener('click', (e) => { e.stopPropagation(); askDone(r.id); });
+    b.addEventListener('keydown', (e) => e.stopPropagation());
+    return b;
+  }
+  function askDone(id) {
+    state.selected = id;
+    state.doneAsk = id;
+    renderList();
+    renderDetail();
+    const i = document.querySelector('#detail-body .done-ask input');
+    if (i) i.focus();
   }
   function statusPill(r) {
     const n = el('span', { class: 'st-pill', text: L.statusName(r.status, state.lang) });
@@ -585,7 +673,23 @@
       head.append(bar);
     }
     head.append(el('p', { class: 'd-sub' }, el('b', { text: r.customer }), ' · ', deviceLine(r), ' · ', ...receivedNode(r)));
+    if (r.slack_url && isSafeUrl(r.slack_url)) head.append(el('p', { class: 'd-slack' }, el('a', { href: r.slack_url, target: '_blank', rel: 'noopener noreferrer', text: t('d.slack') })));
     nodes.push(head);
+
+    // 같은 고객사의 다른 CS (상세에서만). 누르면 그 CS 로
+    const rel = full ? L.relatedByCustomer(r, state.all) : [];
+    if (rel.length) {
+      nodes.push(el('div', { class: 'd-related' },
+        el('h3', { text: t('d.related', { c: r.customer, n: rel.length }) }),
+        ...rel.map((x) => {
+          const p = kstParts(new Date(x.received_at));
+          const b = el('button', { type: 'button', class: 'rel-row' },
+            el('span', { class: 'rel-title', text: disp(x).title || t('list.noTitle') }),
+            el('span', { class: 'muted small', text: `${L.statusName(x.status, state.lang)} · ${p.month}-${p.day}` }));
+          b.addEventListener('click', () => selectRow(x.id));
+          return b;
+        })));
+    }
 
     // 상태 버튼 줄: 한 번 누르면 바로 저장 (상태를 바꾸면 이전 상태의 메모는 비운다)
     const stBox = el('div', { class: 'd-status' });
@@ -594,6 +698,7 @@
       b.style.setProperty('--c', L.STATUS[k].color);
       b.addEventListener('click', () => {
         if (r.status === k || state.busy) return;
+        if (k === 'done') { state.doneAsk = r.id; full ? renderDetail() : renderPopups(); return; }   // 완료는 한 줄 메모를 먼저 묻는다
         note.dataset.orig = note.value;   // 상태를 바꾸면 메모는 비워 저장되므로 쓰던 메모를 되살리지 않는다
         save({ status: k, status_note: '' }, stBox);
       });
@@ -606,6 +711,26 @@
       if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (!state.busy && note.value.trim() !== r.status_note) { note.dataset.orig = note.value; save({ status_note: note.value.trim() }, stBox); } }
     });
     stBox.append(stRow, note);
+    // 완료 한 줄 메모: 무엇으로 해결했는지 (비워도 됨). 처리 이력에 「해결: …」로 남는다
+    if (state.doneAsk === r.id && r.status !== 'done') {
+      const memo = el('input', { type: 'text', maxlength: '300', placeholder: t('done.ph'), 'aria-label': t('done.ph') });
+      const ok = el('button', { type: 'button', class: 'btn primary xs', text: t('done.save') });
+      const cancel = el('button', { type: 'button', class: 'btn xs', text: t('btn.cancel') });
+      const finish = () => {
+        if (state.busy) return;
+        note.dataset.orig = note.value;
+        const entry = L.resolutionEntry(memo.value, state.lang);
+        state.doneAsk = null;
+        save({ status: 'done', status_note: '', ...(entry ? { _memo: entry } : {}) }, stBox);
+      };
+      memo.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); finish(); }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); state.doneAsk = null; full ? renderDetail() : renderPopups(); }
+      });
+      ok.addEventListener('click', finish);
+      cancel.addEventListener('click', () => { state.doneAsk = null; full ? renderDetail() : renderPopups(); });
+      stBox.append(el('div', { class: 'done-ask' }, el('label', { class: 'small', text: t('done.ask') }), el('div', { class: 'done-row' }, memo, ok, cancel)));
+    }
     nodes.push(stBox);
 
     // 속성 4줄: CS 담당 · 심각도 · 티켓 담당 · 접수자
@@ -643,6 +768,8 @@
     nodes.push(el('div', { class: 'detail-section' }, el('h3', { text: t('detail.desc') }), el('p', { class: 'detail-desc', text: f.description || '—' })));
     if (f.notes) nodes.push(el('div', { class: 'detail-section' }, el('h3', { text: t('side.notes') }), el('p', { class: 'detail-desc', text: f.notes })));
 
+    if (full) nodes.push(replyBox(r));
+
     // 처리 이력 + 한 줄 추가 (날짜가 없으면 오늘 날짜를 붙인다)
     const hist = el('ol', { class: 'history' }, ...(f.timeline.length
       ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text })); })
@@ -665,6 +792,44 @@
       nodes.push(el('div', { class: 'd-foot' }, el('span', { class: 'muted small', text: t('dialog.meta', { created: fmtDateTime(r.created_at), updated: fmtDateTime(r.updated_at) }) }), edit));
     }
     return nodes;
+  }
+
+  // 고객 회신 초안 (AI). 누를 때만 만들고 저장하지 않는다. 언어는 화면 언어, 「다른 언어로」로 바꿈
+  function replyBox(r) {
+    const st = state.replies[r.id];
+    const box = el('div', { class: 'detail-section reply-box' });
+    const make = (lang) => async () => {
+      state.replies[r.id] = { lang, text: '', busy: true, error: '' };
+      renderDetail();
+      try {
+        const { reply } = await callFn('ai', { mode: 'reply', id: r.id, replyLang: lang });
+        state.replies[r.id] = { lang, text: reply || '', busy: false, error: '' };
+      } catch (e) {
+        state.replies[r.id] = { lang, text: '', busy: false, error: t('reply.failed', { e: e.message }) };
+      }
+      if (state.selected === r.id) renderDetail();
+    };
+    if (!st) {
+      const b = el('button', { type: 'button', class: 'btn small', text: t('reply.make') });
+      b.addEventListener('click', make(state.lang));
+      box.append(el('div', { class: 'reply-head' }, el('h3', { text: t('reply.title') }), b));
+      return box;
+    }
+    const other = st.lang === 'en' ? 'ko' : 'en';
+    const copy = el('button', { type: 'button', class: 'link-btn', text: t('reply.copy') });
+    copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(st.text); toast(t('reply.copied')); } catch { toast(t('reply.copyFailed')); } });
+    const sw = el('button', { type: 'button', class: 'link-btn', text: t(other === 'en' ? 'reply.inEn' : 'reply.inKo') });
+    sw.addEventListener('click', make(other));
+    const again = el('button', { type: 'button', class: 'link-btn', text: t('reply.again') });
+    again.addEventListener('click', make(st.lang));
+    const close = el('button', { type: 'button', class: 'link-btn', text: t('btn.close') });
+    close.addEventListener('click', () => { delete state.replies[r.id]; renderDetail(); });
+    box.append(el('div', { class: 'reply-head' }, el('h3', { text: t('reply.title') + (st.lang === 'en' ? ' · English' : ' · 한국어') }),
+      st.busy ? null : el('span', { class: 'reply-actions' }, ...(st.text ? [copy, sw, again] : [again]), close)));
+    if (st.busy) box.append(el('p', { class: 'muted small', text: t('reply.making') }));
+    else if (st.error) box.append(el('p', { class: 'error', text: st.error }));
+    else box.append(el('p', { class: 'reply-text', text: st.text }), el('p', { class: 'muted small', text: t('reply.note') }));
+    return box;
   }
 
   // 상세의 티켓 카드: 번호(링크) · 상태 · 개발 담당 · 요약
@@ -690,6 +855,11 @@
     showError(errNode, '');
     const controls = box ? [...box.querySelectorAll('button, input, select')] : [];
     controls.forEach((n) => { n.disabled = true; });
+    // 상태 · 심각도를 바꾸면 처리 이력에 자동으로 남기고, 완료 한 줄 메모(_memo)도 이어 붙인다
+    const { _memo, ...rest } = patch;
+    const auto = [...L.autoHistory(r, rest, whoAmI(), state.lang), ...(_memo ? [_memo] : [])];
+    if (auto.length) patch = { ...rest, timeline: [...(rest.timeline || r.timeline), ...auto] };
+    else patch = rest;
     const { data, error } = await sb.from('cs_tickets').update(patch)
       .eq('id', r.id)
       .eq('updated_at', r.updated_at)
@@ -915,6 +1085,7 @@
     }));
 
     renderFlow();
+    renderResolve();
 
     // 특이사항
     const notesBox = $('notes-list');
@@ -928,6 +1099,28 @@
       : [el('p', { class: 'muted', text: busyHere ? t('report.analyzing') : s ? t('common.none') : '—' })]));
   }
   // 월별 접수 처리 그래프 (최대 12개월, 보고 있는 달이 그보다 이전이면 그 달까지). 접수 = 막대 전체, 그중 완료 = 초록
+  // 처리 소요일 (고른 달에 완료된 건). 지난달과 평균을 비교한다
+  function renderResolve() {
+    const cur = L.resolveStats(state.all, state.month);
+    const prev = L.resolveStats(state.all, shiftMonth(state.month, -1));
+    $('resolve-title').textContent = t('rs.title', { m: state.month });
+    $('resolve-sub').textContent = t('rs.sub');
+    const d1 = (x) => (Math.round(x * 10) / 10).toFixed(1).replace(/\.0$/, '');
+    if (!cur) { $('resolve-body').replaceChildren(el('p', { class: 'side-empty', text: t('rs.empty') })); return; }
+    const stat = (v, label, cls = '') => el('div', { class: 'rs-stat' }, el('b', { class: 'mono ' + cls, text: v }), el('span', { class: 'muted small', text: label }));
+    const items = [
+      stat(t('rs.days', { n: d1(cur.avg) }), t('rs.avg')),
+      stat(t('rs.days', { n: d1(cur.median) }), t('rs.median')),
+      stat(t('rs.days', { n: d1(cur.max) }), t('rs.max')),
+      stat(`${Math.round(cur.within7 * 100)}%`, t('rs.within7')),
+      stat(String(cur.n), t('rs.n')),
+    ];
+    if (prev) {
+      const diff = cur.avg - prev.avg;
+      items.push(stat(`${diff > 0 ? '+' : diff < 0 ? '−' : ''}${t('rs.days', { n: d1(Math.abs(diff)) })}`, t('rs.vsPrev'), diff < 0 ? 'good' : diff > 0 ? 'bad' : ''));
+    }
+    $('resolve-body').replaceChildren(...items);
+  }
   function renderFlow() {
     const now = currentMonthKST();
     const end = state.month < shiftMonth(now, -11) ? shiftMonth(state.month, 11) : now;
@@ -1149,6 +1342,7 @@
       f.ticket_assignee.value = row.ticket_assignee || '';
       f.description.value = row.description;
       f.notes.value = row.notes;
+      f.slack_url.value = row.slack_url || '';
       row.timeline.forEach((v) => addListItem('timeline', v));
       row.tickets.forEach((v) => addListItem('tickets', v));
       $('form-meta').textContent =
@@ -1165,6 +1359,7 @@
     }
     if (!listValues('timeline').length) addListItem('timeline');
     if (!listValues('tickets').length) addListItem('tickets');
+    renderSimilar();
     dialog.showModal();
   }
   dialog.querySelectorAll('[data-close]').forEach((b) =>
@@ -1177,6 +1372,23 @@
     ['save-btn', 'delete-btn', 'delete-yes', 'delete-no'].forEach((id) => { $(id).disabled = on; });
     dialog.querySelectorAll('[data-close]').forEach((b) => { b.disabled = on; });
   }
+
+  // 새 CS 를 쓸 때 비슷한 CS (안 끝난 것 · 최근 30일 안에 끝난 것) 를 현상 한 줄 아래에 알려 준다
+  function renderSimilar() {
+    const box = $('similar-box');
+    const f = form.elements;
+    const hits = state.editing ? [] : L.similarRows(f.title.value, f.customer.value, state.all, { titlesOf: (r) => [r.title, disp(r).title] });
+    box.hidden = !hits.length;
+    if (!hits.length) { box.replaceChildren(); return; }
+    box.replaceChildren(el('strong', { text: t('sim.title', { n: hits.length }) }), ...hits.map(({ row: x }) => {
+      const p = kstParts(new Date(x.received_at));
+      const b = el('button', { type: 'button', class: 'link-btn', text: disp(x).title || t('list.noTitle') });
+      b.addEventListener('click', () => { if (state.busy) return; dialog.close(); state.selected = x.id; renderList(); renderDetail(); });
+      return el('div', { class: 'sim-row' }, b, el('span', { class: 'muted small', text: `${x.customer} · ${p.month}-${p.day} · ${L.statusName(x.status, state.lang)}` }));
+    }), el('p', { class: 'muted small', text: t('sim.hint') }));
+  }
+  let simTimer = null;
+  ['title', 'customer'].forEach((n) => form.elements[n].addEventListener('input', () => { clearTimeout(simTimer); simTimer = setTimeout(renderSimilar, 250); }));
 
   // 빈 필수 칸 표시는 채우는 즉시 지운다
   form.addEventListener('input', (e) => { if (e.target.hasAttribute && e.target.hasAttribute('aria-invalid')) e.target.removeAttribute('aria-invalid'); });
@@ -1210,6 +1422,9 @@
       timeline: listValues('timeline').map((v) => (state.editing && state.editing.timeline.includes(v) ? v : L.datedEntry(v))),
       tickets: listValues('tickets'),
     };
+    // 슬랙 링크 칸은 DB 에 slack_url 이 생긴 뒤에만 보낸다 (스키마 적용 전에도 저장이 깨지지 않게)
+    const slack = f.slack_url.value.trim();
+    if (slack || (state.editing && 'slack_url' in state.editing) || state.all.some((r) => 'slack_url' in r)) payload.slack_url = slack;
     const missing = [];
     // 창에 보이는 순서대로
     if (!payload.title) missing.push(t('f.nTitle'));
@@ -1219,6 +1434,9 @@
     if (!payload.reporter) missing.push(t('f.nReporter'));
     if (!L.STATUS[payload.status]) missing.push(t('f.nStatus'));
     if (!L.SEVERITY[payload.severity]) missing.push(t('f.nSeverity'));
+    if (payload.slack_url && !isSafeUrl(payload.slack_url)) missing.push(t('f.nSlack'));
+    // 고치면서 상태 · 심각도를 바꿨으면 처리 이력에 자동으로 남긴다
+    if (state.editing) payload.timeline = [...payload.timeline, ...L.autoHistory(state.editing, payload, whoAmI(), state.lang)];
     return { payload, missing };
   }
 
@@ -1336,6 +1554,7 @@
     form.querySelector('[data-list="timeline"]').replaceChildren();
     tl.forEach((t) => addListItem('timeline', t));
     if (!tl.length) addListItem('timeline');
+    renderSimilar();
     const hints = [];
     if (tl.length) hints.push(t('paste.hTimeline', { n: tl.length }));
     if (parsedAsg) hints.push(t(asgKnown ? 'paste.hAsgKnown' : 'paste.hAsgUnknown', { name: parsedAsg }));
@@ -1472,6 +1691,7 @@
     if (!error) state.assignees = data.map((x) => x.name).sort((a, b) => a.localeCompare(b, 'ko'));
     if (error && asgDialog.open) showError($('asg-error'), state.assigneesError);
     renderAsgItems();
+    renderMe();
   }
 
   // 드롭다운: 미지정 + 명단. 지금 값이 명단에 없으면(삭제된 이름 등) 그대로 고를 수 있게 따로 넣는다.

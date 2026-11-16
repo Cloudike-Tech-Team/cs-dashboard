@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
 import {
-  chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, partLang, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
+  chunkRows, MAX_CHARS_PER_CALL, SUMMARY_MAX_TOKENS, translateInChunks, Truncated, msg, BadRequest, normalizeTranslation, partLang, replyInput, sourceHash, sourceText, splitTimelinePrefix, translateInput, buildSummaryInput, buildSummaryMarkdown, deviceCounts, mapIssueIndexes, monthRange, normalizeParsed,
   maskEmails, normalizeSummary, sortByReceived, statusText, unresolvedLines, validateRequest,
 } from './lib.ts';
 
@@ -368,4 +368,20 @@ Deno.test('normalizeTranslation: 이미 그 언어로 쓴 칸 · 이력 줄은 �
   assertEquals(m.get('m1')!.ko.timeline, ['11/04 접수', '11/10 김지훈: 로그 요청']);
   assertEquals(m.get('m1')!.en.title, 'Login fails');
   assertEquals(m.get('m1')!.en.timeline, ['11/04 Received', '11/10 김지훈: Requested logs']);
+});
+
+Deno.test('validateRequest: reply 는 id 가 필요하고 replyLang 은 en 아니면 ko', () => {
+  assertEquals(validateRequest({ mode: 'reply', id: 'x', replyLang: 'en' }), { mode: 'reply', id: 'x', replyLang: 'en', lang: 'ko' });
+  assertEquals(validateRequest({ mode: 'reply', id: 'x', lang: 'en' }), { mode: 'reply', id: 'x', replyLang: 'ko', lang: 'en' });
+  let threw = false;
+  try { validateRequest({ mode: 'reply' }); } catch { threw = true; }
+  assertEquals(threw, true);
+});
+
+Deno.test('replyInput: 담당자 · 접수자 같은 내부 칸은 넣지 않고, 이력은 날짜를 뗀다', () => {
+  const s = replyInput({ title: '썸네일 깨짐', customer: 'acme 204', device: 'Android', version: '5.2.0', description: 'd', status: 'open', status_note: '', timeline: ['11/07 로그 요청'], tickets: ['NRF-5029'] }, 'en');
+  const o = JSON.parse(s);
+  assertEquals(o.reply_language, 'English');
+  assertEquals(o.history, ['로그 요청']);
+  assertEquals('assignee' in o || 'reporter' in o, false);
 });

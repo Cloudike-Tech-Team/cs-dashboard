@@ -1,15 +1,16 @@
 // CS 대시보드 AI Edge Function
 //   mode=parse     : 슬랙 메시지 텍스트 → 폼 필드 JSON
 //   mode=summarize : 해당 월 cs_tickets → 월간 요약 마크다운 (cs_monthly_summaries 에 저장)
+//   mode=reply     : CS 하나 → 고객 회신 초안 (저장하지 않음)
 // 인증: 요청 JWT 로 auth.getUser() 가 성공해야만 Claude 를 호출한다.
 // 배포: npx supabase functions deploy ai --no-verify-jwt   (검증은 여기서 직접 함)
 
 import Anthropic from 'npm:@anthropic-ai/sdk@0.133.0';
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
-import { MODEL, PARSE_SCHEMA, PARSE_SYSTEM, SUMMARY_SCHEMA, SUMMARY_SYSTEM, TRANSLATE_SCHEMA, TRANSLATE_SYSTEM } from './prompts.ts';
+import { MODEL, PARSE_SCHEMA, PARSE_SYSTEM, REPLY_SYSTEM, SUMMARY_SCHEMA, SUMMARY_SYSTEM, TRANSLATE_SCHEMA, TRANSLATE_SYSTEM } from './prompts.ts';
 import {
   BadRequest, msg, buildSummaryMarkdown, mapIssueIndexes, MAX_TRANSLATE_ROWS_PER_CALL, monthRange, normalizeParsed,
-  normalizeSummary, sourceHash, SUMMARY_MAX_TOKENS, summaryUserMessage, translateInChunks, translateInput, Truncated, validateRequest, type Lang, type Ticket, type TrFields, type TrSource,
+  normalizeSummary, replyInput, sourceHash, SUMMARY_MAX_TOKENS, summaryUserMessage, translateInChunks, translateInput, Truncated, validateRequest, type Lang, type ReplySource, type Ticket, type TrFields, type TrSource,
 } from './lib.ts';
 
 // deno-lint-ignore no-explicit-any
@@ -194,6 +195,23 @@ Deno.serve(async (req) => {
       try { parsed = JSON.parse(textOf(res)); }
       catch { throw new HttpError(502, 'badModelJson'); }
       return json({ parsed: normalizeParsed(parsed) });
+    }
+
+    // ── reply: 고객 회신 초안. 누를 때만 부르고 저장하지 않는다
+    if (body.mode === 'reply') {
+      const { data, error } = await sb.from('cs_tickets')
+        .select('title,customer,device,version,description,status,status_note,timeline,tickets').eq('id', body.id).maybeSingle();
+      if (error) throw new HttpError(500, 'csLoadFailed', { error: error.message });
+      if (!data) throw new HttpError(404, 'csNotFound');
+      const res = await claude.messages.create({
+        model: MODEL,
+        max_tokens: 1500,
+        system: REPLY_SYSTEM,
+        output_config: { effort: 'low' },
+        messages: [{ role: 'user', content: `다음 CS 기록으로 고객 회신 초안을 쓰세요.\n\n${replyInput(data as ReplySource, body.replyLang)}` }],
+      });
+      checkStop(res, 'reply');
+      return json({ reply: textOf(res).trim() });
     }
 
     // ── translate: 지정한 CS 중 번역이 없거나 오래된 것만

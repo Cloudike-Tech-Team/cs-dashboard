@@ -385,3 +385,48 @@ update public.cs_ticket_translations set fields = fields
 update public.cs_monthly_summaries set content = content
   where concat_ws(' ', content, content_en, issues::text, notes::text, issues_en::text, notes_en::text)
         ~ '[A-Za-z0-9]@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}';
+
+-- ─────────────────────────────────────────────
+-- 9. 2026-11 개선: 완료 시각 · 슬랙 원문 링크 · 실시간 반영
+-- ─────────────────────────────────────────────
+-- done_at: 완료로 바뀐 시각 (월간 리포트의 처리 소요일). 아래 트리거만 쓰고 화면은 읽기만 한다.
+--          예전에 완료된 건은 언제 끝났는지 몰라 비워 둔다 (처리 소요일 계산에서 빠짐).
+-- slack_url: 등록 때 붙인 슬랙 원문 스레드 링크
+alter table public.cs_tickets
+  add column if not exists done_at   timestamptz,
+  add column if not exists slack_url text not null default ''
+                                     check (char_length(slack_url) <= 500);
+
+create or replace function public.cs_tickets_done_at()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status = 'done' then
+    if tg_op = 'INSERT' or old.status is distinct from 'done' then
+      new.done_at := now();
+    else
+      new.done_at := old.done_at;   -- 완료인 채로 다른 칸만 고치면 그대로 (클라이언트가 바꿀 수 없음)
+    end if;
+  else
+    new.done_at := null;            -- 다시 열면 비움
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists cs_tickets_done_at on public.cs_tickets;
+create trigger cs_tickets_done_at
+  before insert or update on public.cs_tickets
+  for each row execute function public.cs_tickets_done_at();
+
+-- 실시간 반영: 다른 사람이 바꾼 CS 를 새로고침 없이 받는다 (바뀐 행만 전달. RLS 는 그대로 적용)
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_publication_tables
+                 where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'cs_tickets') then
+    alter publication supabase_realtime add table public.cs_tickets;
+  end if;
+end;
+$$;

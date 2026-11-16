@@ -80,12 +80,14 @@
     return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86400000));
   }
   // ── 처리 현황 보기 · 정렬 (UX 1차)
-  const OVERDUE_DAYS = 7;   // 이 날 이상 열려 있으면 「지연 N일째」
+  const OVERDUE_DAYS = 7;   // 마지막 수정 뒤 이 날 이상 지나면 「소식 없음 N일」
   // 이월: 이번 달(KST) 전에 접수됐고 아직 완료가 아닌 CS
   function isCarried(row, nowMonth) { return row.status !== 'done' && monthKST(row.received_at) < nowMonth; }
-  // view: open(미해결 · 모든 달, 기본) | carry(이월) | done(완료) | all(전체)
-  function viewRows(rows, view, nowMonth) {
+  // view: open(미해결 · 모든 달, 기본) | mine(내 담당 미해결) | carry(이월) | done(완료) | all(전체)
+  // me: 이 브라우저에서 고른 「나」(CS 담당 이름). 없으면 mine 은 빈 목록
+  function viewRows(rows, view, nowMonth, me = '') {
     if (view === 'all') return rows;
+    if (view === 'mine') return me ? rows.filter((r) => r.status !== 'done' && r.assignee === me) : [];
     if (view === 'done') return rows.filter((r) => r.status === 'done');
     if (view === 'carry') return rows.filter((r) => isCarried(r, nowMonth));
     return rows.filter((r) => r.status !== 'done');
@@ -116,10 +118,98 @@
     return [...rows].sort(cmp);
   }
   // 완료 전 CS 의 경과: { days, overdue }. 완료면 null
+  // 완료 전 CS 의 「소식」: 마지막 수정(updated_at · 이력 추가 · 상태 변경 포함) 뒤 지난 날.
+  // 대기 · 배포대기는 남(고객 · 배포)을 기다리는 중이라 멈춤으로 치지 않는다 (waiting: true, 회색)
+  // 완료면 null. received: 접수 후 지난 날 (툴팁용)
+  const WAIT_STATUSES = ['waiting', 'deploy'];
   function ageInfo(row, now = Date.now()) {
-    const days = ageDays(row, now);
-    return days === null ? null : { days, overdue: days >= OVERDUE_DAYS };
+    if (row.status === 'done') return null;
+    const days = daysSince(row.updated_at || row.received_at, now);
+    const waiting = WAIT_STATUSES.includes(row.status);
+    return { days, waiting, overdue: !waiting && days >= OVERDUE_DAYS, received: daysSince(row.received_at, now) };
   }
+  // ── 상태 · 심각도를 바꾸면 처리 이력에 자동으로 남길 줄. 「11/16 상태 처리 중 → 완료 · 이동훈」
+  // 바뀐 것이 없으면 빈 배열. who 가 없으면 이름을 붙이지 않는다
+  function autoHistory(orig, patch, who = '', lang = 'ko', now = Date.now()) {
+    const out = [];
+    const tail = who ? ` · ${who}` : '';
+    if ('status' in patch && patch.status !== orig.status) {
+      out.push(datedEntry(`${lang === 'en' ? 'Status' : '상태'} ${statusName(orig.status, lang)} → ${statusName(patch.status, lang)}${tail}`, now));
+    }
+    if ('severity' in patch && severityKey(patch) !== severityKey(orig)) {
+      out.push(datedEntry(`${lang === 'en' ? 'Severity' : '심각도'} ${severityLabel(severityKey(orig), lang)} → ${severityLabel(severityKey(patch), lang)}${tail}`, now));
+    }
+    return out;
+  }
+  // 완료 때 받은 한 줄 메모 → 이력 줄
+  function resolutionEntry(memo, lang = 'ko', now = Date.now()) {
+    const s = String(memo || '').trim();
+    return s ? datedEntry(`${lang === 'en' ? 'Resolution' : '해결'}: ${s}`, now) : '';
+  }
+
+  // ── 고객사가 같은 다른 CS. 고객사 칸은 「com 6384, com 9212」 · 「com 941 / user 9415」처럼 여럿일 수 있어 하나라도 겹치면 같다고 본다
+  function customerKeys(customer) {
+    return String(customer || '').toLowerCase().split(/[,/;]|\s+및\s+/).map((x) => x.replace(/\s+/g, ' ').trim()).filter((x) => x.length >= 2);
+  }
+  // 안 끝난 건 먼저, 그다음 최근 접수 순. 최대 limit 건
+  function relatedByCustomer(row, rows, limit = 5) {
+    const keys = new Set(customerKeys(row.customer));
+    if (!keys.size) return [];
+    return rows.filter((r) => r.id !== row.id && customerKeys(r.customer).some((k) => keys.has(k)))
+      .sort((a, b) => (a.status === 'done') - (b.status === 'done') || new Date(b.received_at) - new Date(a.received_at))
+      .slice(0, limit);
+  }
+
+  // ── 등록할 때 비슷한 CS: 제목 글자 두 개씩 묶은 조각(bigram)이 얼마나 겹치는지(Dice). 고객사가 같으면 기준을 낮춘다
+  function bigrams(s) {
+    const t = String(s || '').toLowerCase().replace(/[^0-9a-z\uac00-\ud7a3]+/g, '');
+    const out = new Map();
+    for (let i = 0; i < t.length - 1; i++) { const g = t.slice(i, i + 2); out.set(g, (out.get(g) || 0) + 1); }
+    return out;
+  }
+  function titleSimilarity(a, b) {
+    const A = bigrams(a), B = bigrams(b);
+    const na = [...A.values()].reduce((x, y) => x + y, 0), nb = [...B.values()].reduce((x, y) => x + y, 0);
+    if (!na || !nb) return 0;
+    let both = 0;
+    A.forEach((n, g) => { both += Math.min(n, B.get(g) || 0); });
+    return (2 * both) / (na + nb);
+  }
+  // 안 끝난 CS 와 최근 30일 안에 끝난 CS 중에서 찾는다. 비슷한 순 최대 limit 건
+  // titlesOf: 비교할 제목들 (원문 + 화면 언어 번역). 한국어로 쓴 CS 를 영어로 찾아도 걸리게
+  function similarRows(title, customer, rows, { excludeId = null, limit = 3, now = Date.now(), titlesOf = (r) => [r.title] } = {}) {
+    if (String(title || '').trim().length < 4) return [];
+    const keys = new Set(customerKeys(customer));
+    return rows
+      .filter((r) => r.id !== excludeId && (r.status !== 'done' || daysSince(r.updated_at || r.received_at, now) <= 30))
+      .map((r) => {
+        const sim = Math.max(0, ...titlesOf(r).filter(Boolean).map((x) => titleSimilarity(title, x)));
+        const sameCust = keys.size > 0 && customerKeys(r.customer).some((k) => keys.has(k));
+        return { row: r, sim, sameCust };
+      })
+      .filter((x) => x.sim >= 0.5 || (x.sameCust && x.sim >= 0.3))
+      .sort((a, b) => b.sim - a.sim)
+      .slice(0, limit);
+  }
+
+  // ── 처리 소요일: 완료 시각(done_at)이 그 달(KST)인 CS 의 접수 → 완료 일수. 완료 시각이 없는 옛 기록은 뺀다
+  function resolveDays(row) {
+    if (!row.done_at) return null;
+    return Math.max(0, (new Date(row.done_at) - new Date(row.received_at)) / 86400000);
+  }
+  function resolveStats(rows, ym) {
+    const d = rows.filter((r) => r.status === 'done' && r.done_at && monthKST(r.done_at) === ym).map(resolveDays).sort((a, b) => a - b);
+    if (!d.length) return null;
+    const mid = d.length >> 1;
+    return {
+      n: d.length,
+      avg: d.reduce((a, b) => a + b, 0) / d.length,
+      median: d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2,
+      max: d[d.length - 1],
+      within7: d.filter((x) => x <= OVERDUE_DAYS).length / d.length,
+    };
+  }
+
   // 버전은 v 없이 저장하고 표시할 때 한 번만 붙인다 (v2.1.6 → 2.1.6)
   function plainVersion(v) { const s = String(v || '').trim(); return /^v\d/i.test(s) ? s.slice(1) : s; }
   // 날짜 없이 쓴 처리 이력은 오늘(KST) 날짜를 앞에 붙인다
@@ -410,7 +500,7 @@
   }
 
   return {
-    popupPlace, popupBig, applyFilters, actionCounts, splitByMonth, groupByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
+    popupPlace, popupBig, applyFilters, actionCounts, autoHistory, resolutionEntry, customerKeys, relatedByCustomer, titleSimilarity, similarRows, resolveDays, resolveStats, splitByMonth, groupByMonth, mismatch, filterOptions, OVERDUE_DAYS, isCarried, viewRows, sortRows, ageInfo, plainVersion, datedEntry,
     dragTarget, dragShift, ytSeverity, severityOf,
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, partLang, isSourceLang, needsTranslation, displayFields,

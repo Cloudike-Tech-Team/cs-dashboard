@@ -10,7 +10,9 @@ export const MSG: Record<string, { ko: string; en: string }> = {
   noText: { ko: '분석할 텍스트가 없습니다.', en: 'There is no text to analyze.' },
   textTooLong: { ko: '텍스트가 너무 깁니다 (최대 {n}자).', en: 'The text is too long (max {n} characters).' },
   badMonth: { ko: 'month 는 YYYY-MM 형식이어야 합니다.', en: 'month must be in YYYY-MM format.' },
-  badMode: { ko: 'mode 는 parse, summarize, translate, translate_backfill 중 하나여야 합니다.', en: 'mode must be parse, summarize, translate or translate_backfill.' },
+  badMode: { ko: 'mode 는 parse, summarize, translate, translate_backfill, reply 중 하나여야 합니다.', en: 'mode must be parse, summarize, translate, translate_backfill or reply.' },
+  badId: { ko: 'CS id 가 없습니다.', en: 'CS id is missing.' },
+  csNotFound: { ko: 'CS 를 찾지 못했습니다.', en: 'CS not found.' },
   postOnly: { ko: 'POST 만 지원합니다.', en: 'Only POST is supported.' },
   noApiKey: { ko: 'ANTHROPIC_API_KEY 가 설정되지 않았습니다. supabase secrets set 으로 등록하세요.', en: 'ANTHROPIC_API_KEY is not set. Add it with supabase secrets set.' },
   loginRequired: { ko: '로그인이 필요합니다.', en: 'Please sign in.' },
@@ -45,7 +47,8 @@ export type ParseRequest = { mode: 'parse'; text: string; lang: Lang };
 export type SummarizeRequest = { mode: 'summarize'; month: string; lang: Lang };
 export type TranslateRequest = { mode: 'translate'; ids: string[]; lang: Lang };
 export type BackfillRequest = { mode: 'translate_backfill'; dry: boolean; lang: Lang };
-export type AiRequest = ParseRequest | SummarizeRequest | TranslateRequest | BackfillRequest;
+export type ReplyRequest = { mode: 'reply'; id: string; replyLang: Lang; lang: Lang };
+export type AiRequest = ParseRequest | SummarizeRequest | TranslateRequest | BackfillRequest | ReplyRequest;
 
 export const MAX_TRANSLATE_IDS = 20;
 
@@ -79,7 +82,23 @@ export function validateRequest(body: unknown): AiRequest {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequest('badMonth');
     return { mode: 'summarize', month, lang };
   }
+  if (b.mode === 'reply') {
+    const id = typeof b.id === 'string' ? b.id.trim() : '';
+    if (!id) throw new BadRequest('badId');
+    return { mode: 'reply', id, replyLang: b.replyLang === 'en' ? 'en' : 'ko', lang };
+  }
   throw new BadRequest('badMode');
+}
+
+// 회신 초안에 넣을 CS 내용. 고객이 보면 안 되는 내부 정보(담당자 · 티켓 담당 · 접수자)는 넣지 않는다
+export type ReplySource = { title: string; customer: string; device: string; version: string; description: string; status: string; status_note: string; timeline: string[]; tickets: string[] };
+export function replyInput(r: ReplySource, replyLang: Lang): string {
+  return JSON.stringify({
+    reply_language: replyLang === 'en' ? 'English' : 'Korean',
+    title: r.title || '', customer: r.customer || '', device: r.device || '', version: r.version || '',
+    description: r.description || '', status: r.status || '', status_note: r.status_note || '',
+    history: (r.timeline || []).map((t) => splitTimelinePrefix(t).text), ticket_ids: r.tickets || [],
+  });
 }
 
 // 'YYYY-MM' → [from, to) ISO. KST(+09:00) 고정 오프셋.

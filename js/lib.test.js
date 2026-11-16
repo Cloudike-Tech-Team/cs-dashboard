@@ -400,10 +400,12 @@ test('sortRows: 급한 순 = 심각도 → 지연 상태 → 오래된 순, 오�
   assert.deepEqual(ids(R), ['n1', 'c1', 'h1', 'd1', 'l1', 's1']);   // 원본은 그대로
 });
 
-test('ageInfo: 완료 전이면 경과일, 7일 이상은 지연(overdue), 완료면 null', () => {
-  assert.deepEqual(L.ageInfo(R[0], NOW), { days: 2, overdue: false });
-  assert.deepEqual(L.ageInfo(row({ received_at: '2026-11-03T12:00:00+09:00' }), NOW), { days: 7, overdue: true });
-  assert.deepEqual(L.ageInfo(R[1], NOW), { days: 29, overdue: true });
+test('ageInfo: 마지막 수정 뒤 지난 날. 7일 이상이면 소식 없음(overdue), 대기 · 배포대기는 waiting(멈춤 아님), 완료면 null', () => {
+  assert.deepEqual(L.ageInfo(R[0], NOW), { days: 2, waiting: false, overdue: false, received: 2 });
+  assert.deepEqual(L.ageInfo(row({ received_at: '2026-11-03T12:00:00+09:00' }), NOW), { days: 7, waiting: false, overdue: true, received: 7 });
+  // 오래전에 접수했어도 최근에 손댔으면 멈춘 게 아님
+  assert.deepEqual(L.ageInfo(row({ received_at: '2026-10-01T12:00:00+09:00', updated_at: '2026-11-08T12:00:00+09:00' }), NOW), { days: 2, waiting: false, overdue: false, received: 40 });
+  assert.deepEqual(L.ageInfo(R[1], NOW), { days: 29, waiting: true, overdue: false, received: 29 });   // 배포대기
   assert.equal(L.ageInfo(R[3], NOW), null);
   assert.equal(L.OVERDUE_DAYS, 7);
 });
@@ -541,4 +543,69 @@ test('영어 CS 에 한국어 이력: 영어 화면은 그 줄만 영어 번역'
   const en = L.displayFields(r, 'h', tr, 'en');
   assert.equal(en.title, 'Sync stops');
   assert.deepEqual(en.timeline, ['11/10 Hannah: Requested logs']);
+});
+
+test('viewRows: mine 은 「나」로 고른 담당의 미해결만, 고르지 않았으면 빈 목록', () => {
+  const rows = [row({ id: 'a', assignee: '김' }), row({ id: 'b', assignee: '박' }), row({ id: 'c', assignee: '김', status: 'done' })];
+  assert.deepEqual(ids(L.viewRows(rows, 'mine', '2026-11', '김')), ['a']);
+  assert.deepEqual(ids(L.viewRows(rows, 'mine', '2026-11', '')), []);
+});
+
+test('autoHistory: 상태 · 심각도가 바뀌면 이력 줄, 그대로면 없음', () => {
+  const o = row({ status: 'deploy', severity: 'normal' });
+  assert.deepEqual(L.autoHistory(o, { status: 'done', status_note: '' }, '이동훈', 'ko', NOW), ['11/10 상태 배포대기 → 완료 · 이동훈']);
+  assert.deepEqual(L.autoHistory(o, { severity: 'major' }, '', 'ko', NOW), ['11/10 심각도 보통 → 중요']);
+  assert.deepEqual(L.autoHistory(o, { status: 'deploy', severity: 'normal', title: 'x' }, '김', 'ko', NOW), []);
+  assert.deepEqual(L.autoHistory(o, { status: 'open' }, 'Kim', 'en', NOW), ['11/10 Status To deploy → In progress · Kim']);
+  assert.equal(L.resolutionEntry(' 캐시 삭제 안내로 해결 ', 'ko', NOW), '11/10 해결: 캐시 삭제 안내로 해결');
+  assert.equal(L.resolutionEntry('  ', 'ko', NOW), '');
+});
+
+test('relatedByCustomer: 고객사가 하나라도 겹치는 다른 CS, 안 끝난 건 먼저', () => {
+  const me = row({ id: 'me', customer: 'com 941 / user 9415' });
+  const rows = [me,
+    row({ id: 'a', customer: 'COM 941', status: 'done', received_at: '2026-11-09T10:00:00+09:00' }),
+    row({ id: 'b', customer: 'user 9415, com 1', received_at: '2026-10-01T10:00:00+09:00' }),
+    row({ id: 'c', customer: 'com 9410' }),
+  ];
+  assert.deepEqual(ids(L.relatedByCustomer(me, rows)), ['b', 'a']);
+  assert.deepEqual(L.customerKeys('com 6384, com 9212'), ['com 6384', 'com 9212']);
+  assert.deepEqual(L.relatedByCustomer(row({ customer: '' }), rows), []);
+});
+
+test('similarRows: 제목이 비슷하거나, 고객사가 같고 조금 비슷하면. 오래전에 끝난 건은 빼고', () => {
+  const rows = [
+    row({ id: 'a', title: '로그인 후 동기화가 멈춤', customer: 'com 831' }),
+    row({ id: 'b', title: '사진 백업 썸네일 깨짐', customer: 'acme 204' }),
+    row({ id: 'c', title: '동기화 오류', customer: 'acme 204' }),
+    row({ id: 'd', title: '로그인 후 동기화가 멈춤', status: 'done', received_at: '2026-01-01T10:00:00+09:00' }),
+  ];
+  assert.deepEqual(L.similarRows('로그인 후 동기화 멈춤', '', rows, { now: NOW }).map((x) => x.row.id), ['a']);
+  assert.deepEqual(L.similarRows('동기화 멈춤 현상', 'acme 204', rows, { now: NOW }).map((x) => x.row.id), ['c']);
+  assert.deepEqual(L.similarRows('짧음', '', rows, { now: NOW }), []);
+  assert.equal(L.titleSimilarity('abc', 'abc'), 1);
+});
+
+test('resolveStats: 그 달에 완료된 건의 접수 → 완료 일수 (완료 시각 없는 옛 기록은 제외)', () => {
+  const rows = [
+    row({ status: 'done', received_at: '2026-11-01T00:00:00Z', done_at: '2026-11-03T00:00:00Z' }),
+    row({ status: 'done', received_at: '2026-11-01T00:00:00Z', done_at: '2026-11-11T00:00:00Z' }),
+    row({ status: 'done', received_at: '2026-10-01T00:00:00Z', done_at: '2026-11-05T00:00:00Z' }),
+    row({ status: 'done', received_at: '2026-10-01T00:00:00Z' }),
+    row({ status: 'open', received_at: '2026-10-01T00:00:00Z', done_at: '2026-11-05T00:00:00Z' }),
+  ];
+  const s = L.resolveStats(rows, '2026-11');
+  assert.equal(s.n, 3);
+  assert.equal(s.median, 10);
+  assert.equal(s.max, 35);
+  assert.equal(Math.round(s.avg * 10) / 10, 15.7);
+  assert.equal(Math.round(s.within7 * 100), 33);
+  assert.equal(L.resolveStats(rows, '2026-09'), null);
+});
+
+test('similarRows: 번역 제목으로도 찾는다 (titlesOf)', () => {
+  const rows = [row({ id: 'a', title: '사진 백업 썸네일 깨짐' })];
+  const tr = { a: 'Photo backup thumbnails broken' };
+  assert.deepEqual(L.similarRows('Photo backup thumbnail broken', '', rows, { now: NOW }), []);
+  assert.deepEqual(L.similarRows('Photo backup thumbnail broken', '', rows, { now: NOW, titlesOf: (r) => [r.title, tr[r.id]] }).map((x) => x.row.id), ['a']);
 });

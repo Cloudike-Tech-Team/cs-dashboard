@@ -387,11 +387,11 @@ update public.cs_monthly_summaries set content = content
         ~ '[A-Za-z0-9]@[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}';
 
 -- ─────────────────────────────────────────────
--- 9. 2026-11 개선: 완료 시각 · 슬랙 원문 링크 · 실시간 반영
+-- 9. 2026-11 개선: 완료 시각 · 채널톡 원문 링크 · 실시간 반영
 -- ─────────────────────────────────────────────
 -- done_at: 완료로 바뀐 시각 (월간 리포트의 처리 소요일). 아래 트리거만 쓰고 화면은 읽기만 한다.
 --          예전에 완료된 건은 언제 끝났는지 몰라 비워 둔다 (처리 소요일 계산에서 빠짐).
--- slack_url: 등록 때 붙인 슬랙 원문 스레드 링크
+-- slack_url: 등록 때 붙인 채널톡 원문 스레드 링크 (처음엔 슬랙용으로 만들어 칸 이름만 slack_url)
 alter table public.cs_tickets
   add column if not exists done_at   timestamptz,
   add column if not exists slack_url text not null default ''

@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261117-1';
+  const APP_VERSION = '20261120-1';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -473,9 +473,20 @@
       : a.days === 0 ? t('age.today') : t('age.updated', { n: a.days });
     return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: t('age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }) });
   }
-  function receivedNode(r) {
+  // 이슈가 올라온 뒤 지난 날: 「접수 12일째」(흐림). 완료면 null
+  function openNode(r) {
+    const a = L.ageInfo(r);
+    if (!a) return null;
+    return el('span', { class: 'row-open', text: a.received === 0 ? t('age.openToday') : t('age.open', { n: a.received }), title: t('age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }) });
+  }
+  // 「접수 12일째 · 3일 전 갱신」 (상세 · 좁은 화면 한 줄용)
+  function ageLine(r) {
     const age = ageNode(r);
-    return [el('span', { class: 'mono', text: fmtDateTime(r.received_at) }), ...(age ? [' ', age] : [])];
+    return age ? [openNode(r), ' · ', age] : [];
+  }
+  function receivedNode(r) {
+    const line = ageLine(r);
+    return [el('span', { class: 'mono', text: fmtDateTime(r.received_at) }), ...(line.length ? [' ', ...line] : [])];
   }
   // 심각도 배지 (목록 · 팝업). 보통은 흐린 글자. YouTrack Priority 로 정해진 값은 점선 + 툴팁
   function sevBadge(r) {
@@ -504,7 +515,7 @@
         el('span', { class: 'line2' },
           el('span', { class: 'who', text: r.customer, title: r.customer }),
           el('span', { class: 'dev', text: deviceLine(r) }),
-          age ? el('span', { class: 'age-inline' }, ageNode(r)) : null,
+          age ? el('span', { class: 'age-inline' }, ...ageLine(r)) : null,
           carried ? el('span', { class: 'row-tag', text: t('tag.carry'), title: t('tag.carryTitle') }) : null,
           f.status_note ? el('span', { class: 'row-tag note', text: f.status_note }) : null,
           mm ? el('span', { class: 'row-tag warn', text: t(`mm.${mm}`), title: t(`mm.${mm}Title`) }) : null,
@@ -517,7 +528,7 @@
         el('span', { class: 'asg-name', text: r.assignee || t('common.unassigned') })),
       ticketCell(r),
       el('span', { class: 'col-when', title: `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} (${I.weekday(state.lang, p.weekday)})` },
-        el('span', { class: 'mono', text: when }), age),
+        el('span', { class: 'mono', text: when }), age ? openNode(r) : null, age),
     );
     b.style.setProperty('--s', L.SEVERITY[sk].color);
     b.addEventListener('click', () => selectRow(r.id));

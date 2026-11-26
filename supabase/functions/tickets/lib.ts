@@ -25,11 +25,20 @@ export type YtTicket = {
   assignees: string[]; // Assignee(또는 NPR 의 '개발 담당자')
   url: string;
   priority: string;    // YouTrack Priority (Hot Fix · Critical · Major · Normal · Minor). 필드가 없거나 Jira 면 ''
+  updated: string;     // 티켓 마지막 갱신 시각(ISO). 화면의 「소식 없음」 판단에 쓴다. 모르면 ''
 };
 
 type RawUser = { fullName?: string; name?: string; login?: string };
 type RawField = { $type?: string; name?: string; value?: unknown };
-type RawIssue = { idReadable?: string; summary?: string; resolved?: number | null; customFields?: RawField[] };
+type RawIssue = { idReadable?: string; summary?: string; resolved?: number | null; updated?: number | null; customFields?: RawField[] };
+
+// YouTrack 은 ms 숫자, Jira 는 「2026-11-20T10:00:00.000+0900」(콜론 없는 시간대). 읽지 못하면 ''
+export function isoTime(v: unknown): string {
+  if (v == null || v === '') return '';
+  const s = typeof v === 'string' ? v.replace(/([+-]\d{2})(\d{2})$/, '$1:$2') : v;
+  const d = new Date(s as string | number);
+  return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+}
 
 // 프로젝트마다 필드 이름이 다르다 (NPR: '진행 상황' · '개발 담당자'). '요청자' 같은 다른 사용자 필드는 쓰지 않는다.
 const ASSIGNEE_FIELDS = ['Assignee', '개발 담당자'];
@@ -58,6 +67,7 @@ export function toTicket(raw: RawIssue, baseUrl: string): YtTicket {
     assignees,
     url: `${baseUrl.replace(/\/+$/, '')}/issue/${id}`,
     priority: pv?.name ?? '',
+    updated: isoTime(raw.updated),
   };
 }
 
@@ -74,6 +84,7 @@ type RawJira = {
     summary?: string;
     status?: { name?: string; statusCategory?: { key?: string } } | null;
     assignee?: { displayName?: string; emailAddress?: string } | null;
+    updated?: string;
   };
 };
 
@@ -90,6 +101,7 @@ export function jiraToTicket(raw: RawJira, siteUrl: string): YtTicket {
     assignees: a ? [a] : [],
     url: `${siteUrl.replace(/\/+$/, '')}/browse/${id}`,
     priority: '',   // Jira 우선순위는 쓰지 않는다 (심각도는 YouTrack Priority 만)
+    updated: isoTime(f.updated),
   };
 }
 

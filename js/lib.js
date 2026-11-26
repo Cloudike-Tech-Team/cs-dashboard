@@ -75,9 +75,11 @@
     return { when: '', text: s };
   }
 
-  // 접수 후 경과일 (KST 날짜 기준이 아닌 24시간 단위, 0 이상)
+  // 접수 후 경과일: KST 달력 날짜끼리 뺀 값 (어제 오후 접수 → 오늘 오전에도 1, 0 이상)
+  const KST_MS = 9 * 3600000;
+  function kstDayNum(ms) { return Math.floor((ms + KST_MS) / 86400000); }
   function daysSince(iso, now = Date.now()) {
-    return Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86400000));
+    return Math.max(0, kstDayNum(now) - kstDayNum(new Date(iso).getTime()));
   }
   // ── 처리 현황 보기 · 정렬 (UX 1차)
   const OVERDUE_DAYS = 7;   // 마지막 수정 뒤 이 날 이상 지나면 「소식 없음 N일」
@@ -121,12 +123,25 @@
   // 완료 전 CS 의 「소식」: 마지막 수정(updated_at · 이력 추가 · 상태 변경 포함) 뒤 지난 날.
   // 대기 · 배포대기는 남(고객 · 배포)을 기다리는 중이라 멈춤으로 치지 않는다 (waiting: true, 회색)
   // 완료면 null. received: 접수 후 지난 날 (툴팁용)
+  // yt 가 있으면 연결된 티켓(YouTrack · Jira)의 마지막 갱신도 「소식」으로 친다. 개발팀이 티켓에서 움직이는 중이면 멈춘 게 아니라서.
+  // ticket: 티켓 갱신이 콘솔 수정보다 최근이라 그것을 기준으로 셌으면 true
   const WAIT_STATUSES = ['waiting', 'deploy'];
-  function ageInfo(row, now = Date.now()) {
+  function lastTicketUpdate(row, yt) {
+    let best = 0;
+    for (const x of ticketInfos(row, yt)) {
+      const ms = x.yt && x.yt.updated ? new Date(x.yt.updated).getTime() : 0;
+      if (ms > best) best = ms;
+    }
+    return best;
+  }
+  function ageInfo(row, now = Date.now(), yt = null) {
     if (row.status === 'done') return null;
-    const days = daysSince(row.updated_at || row.received_at, now);
+    const own = new Date(row.updated_at || row.received_at).getTime();
+    const tk = yt ? lastTicketUpdate(row, yt) : 0;
+    const ticket = tk > own;
+    const days = daysSince(new Date(ticket ? tk : own).toISOString(), now);
     const waiting = WAIT_STATUSES.includes(row.status);
-    return { days, waiting, overdue: !waiting && days >= OVERDUE_DAYS, received: daysSince(row.received_at, now) };
+    return { days, waiting, overdue: !waiting && days >= OVERDUE_DAYS, received: daysSince(row.received_at, now), ticket };
   }
   // ── 상태 · 심각도를 바꾸면 처리 이력에 자동으로 남길 줄. 「11/16 상태 처리 중 → 완료 · 이동훈」
   // 바뀐 것이 없으면 빈 배열. who 가 없으면 이름을 붙이지 않는다
@@ -197,16 +212,21 @@
     if (!row.done_at) return null;
     return Math.max(0, (new Date(row.done_at) - new Date(row.received_at)) / 86400000);
   }
+  // byReceived: 그 달에 완료된 건의 접수 월별 건수 (최근 월부터). 접수 기준인 화면 다른 숫자와 헷갈리지 않게 보여 준다
   function resolveStats(rows, ym) {
-    const d = rows.filter((r) => r.status === 'done' && r.done_at && monthKST(r.done_at) === ym).map(resolveDays).sort((a, b) => a - b);
+    const doneRows = rows.filter((r) => r.status === 'done' && r.done_at && monthKST(r.done_at) === ym);
+    const d = doneRows.map(resolveDays).sort((a, b) => a - b);
     if (!d.length) return null;
     const mid = d.length >> 1;
+    const by = new Map();
+    doneRows.forEach((r) => { const k = monthKST(r.received_at); by.set(k, (by.get(k) || 0) + 1); });
     return {
+      byReceived: [...by.entries()].sort((a, b) => b[0].localeCompare(a[0])),
       n: d.length,
       avg: d.reduce((a, b) => a + b, 0) / d.length,
       median: d.length % 2 ? d[mid] : (d[mid - 1] + d[mid]) / 2,
       max: d[d.length - 1],
-      within7: d.filter((x) => x <= OVERDUE_DAYS).length / d.length,
+      within7: d.filter((x) => Math.round(x * 10) / 10 <= OVERDUE_DAYS).length / d.length,   // 화면은 소수 한 자리라 7.03일(「7일」)도 7일 안으로
     };
   }
 
@@ -228,7 +248,7 @@
     const active = Object.entries(filters || {}).filter(([, vs]) => vs && vs.length);
     if (!active.length) return rows;
     return rows.filter((r) => active.every(([type, vs]) => vs.some((v) => (type === 'age'
-      ? !!(ageInfo(r, now) || {}).overdue
+      ? !!(ageInfo(r, now, yt) || {}).overdue
       : applyFilter([r], { type, value: v }, issues, yt).length > 0))));
   }
   // 위쪽 행동 카드 4장: 늘 전체 미해결 기준
@@ -237,7 +257,7 @@
     return {
       open: open.length,
       urgent: open.filter((r) => ['hotfix', 'critical'].includes(severityOf(r, yt))).length,
-      overdue: open.filter((r) => ageInfo(r, now).overdue).length,
+      overdue: open.filter((r) => ageInfo(r, now, yt).overdue).length,
       unassigned: open.filter((r) => !r.assignee).length,
     };
   }
@@ -505,7 +525,7 @@
     backfillStep,
     TR_FIELDS, sourceText, sourceHash, cachedHash, hasHangul, partLang, isSourceLang, needsTranslation, displayFields,
     severityLabel, deviceLabel, statusName, recencyLabel,
-    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, ageDays, monthKST, carryMonths, monthlyFlow, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
+    STATUS, SEVERITY, severityKey, severityDef, ISSUE_COLORS, daysSince, kstDayNum, ageDays, monthKST, carryMonths, monthlyFlow, recencyKey, groupByRecency, statusLabel, statusColor, splitTimeline, kpi, issueCounts, applyFilter, matchesSearch, assigneeLine,
     ticketId, ticketIds, ticketInfos, ytStateColor, ticketAssignees, ticketState,
   };
 });

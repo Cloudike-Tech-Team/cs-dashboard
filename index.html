@@ -6,8 +6,8 @@
   <title>CS 콘솔</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <meta name="app-version" content="20261120-1">
-  <link rel="stylesheet" href="css/style.css?v=20261120-1">
+  <meta name="app-version" content="20261126-1">
+  <link rel="stylesheet" href="css/style.css?v=20261126-1">
 </head>
 <body>
   <!-- 로그인 -->
@@ -49,7 +49,7 @@
     <div class="cards" aria-label="해야 할 일" data-i18n-aria="card.aria">
       <button class="card" type="button" data-card="open"><span class="card-label" data-i18n="card.open">미해결</span><span id="card-open" class="card-value">0</span><span id="card-open-sub" class="card-sub"></span></button>
       <button class="card urgent" type="button" data-card="urgent"><span class="card-label" data-i18n="card.urgent">긴급 · 핫픽스·크리티컬</span><span id="card-urgent" class="card-value">0</span><span class="card-sub" data-i18n="card.urgentSub">미해결 기준</span></button>
-      <button class="card overdue" type="button" data-card="overdue"><span class="card-label" data-i18n="card.overdue">7일 넘게 열림</span><span id="card-overdue" class="card-value">0</span><span class="card-sub" data-i18n="card.overdueSub">경과일로 자동 판단</span></button>
+      <button class="card overdue" type="button" data-card="overdue"><span class="card-label" data-i18n="card.overdue">7일 넘게 소식 없음</span><span id="card-overdue" class="card-value">0</span><span class="card-sub" data-i18n="card.overdueSub">경과일로 자동 판단</span></button>
       <button class="card" type="button" data-card="unassigned"><span class="card-label" data-i18n="card.unassigned">담당 미지정</span><span id="card-unassigned" class="card-value">0</span><span class="card-sub" data-i18n="card.unassignedSub">바로 배정 필요</span></button>
     </div>
     <div class="strip">
@@ -264,9 +264,9 @@
 
   <!-- ?v= 와 위 app-version 은 캐시 무효화용. js/css 를 바꾸면 js/app.js 의 APP_VERSION 과 함께 올린다 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=20261120-1"></script>
-  <script src="js/i18n.js?v=20261120-1"></script>
-  <script src="js/lib.js?v=20261120-1"></script>
-  <script src="js/app.js?v=20261120-1"></script>
+  <script src="js/config.js?v=20261126-1"></script>
+  <script src="js/i18n.js?v=20261126-1"></script>
+  <script src="js/lib.js?v=20261126-1"></script>
+  <script src="js/app.js?v=20261126-1"></script>
 </body>
 </html>

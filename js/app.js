@@ -4,7 +4,7 @@
   // 배포 버전. index.html 의 <meta name="app-version"> 과 asset ?v= 를 함께 올린다.
   // GitHub Pages 는 파일마다 따로 10분 캐시하므로 배포 직후 "예전 HTML + 새 JS" 가 섞일 수 있다.
   // 그러면 새 JS 가 HTML 에 없는 요소를 찾다 멈추므로, HTML 을 캐시 무시로 다시 받아 한 번만 새로고침한다.
-  const APP_VERSION = '20261120-1';
+  const APP_VERSION = '20261126-1';
   const htmlVersion = (document.querySelector('meta[name="app-version"]') || {}).content;
   if (htmlVersion !== APP_VERSION) {
     let retried = false;
@@ -327,6 +327,18 @@
     loadTickets({ rows: [row] });
   }
 
+  // ───────────── 날짜가 바뀌면 경과일(「N일째」 · 「소식 없음」)을 다시 계산 ─────────────
+  // 탭을 켜 둔 채 자정(KST)을 넘기거나, 다른 탭에 있다 돌아왔을 때. DB 는 읽지 않고 화면만 다시 그린다
+  let shownDay = L.kstDayNum(Date.now());
+  function refreshIfNewDay() {
+    const d = L.kstDayNum(Date.now());
+    if (d === shownDay) return;
+    shownDay = d;
+    if (!$('app-view').hidden) renderAll();
+  }
+  setInterval(refreshIfNewDay, 60000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshIfNewDay(); });
+
   // ───────────── 보기 · 정렬 · 검색 ─────────────
   const VIEWS = ['open', 'mine', 'carry', 'all', 'done'];
   const SORTS = ['urgent', 'oldest', 'recent'];
@@ -464,20 +476,21 @@
   }
 
   // 완료 전 CS 의 경과: 「N일째」, 7일 이상은 「지연 N일째」(빨강). 완료면 null
+  function ageTitle(a) { return t(a.ticket ? 'age.titleTicket' : 'age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }); }
   function ageNode(r) {
-    const a = L.ageInfo(r);
+    const a = L.ageInfo(r, Date.now(), state.yt);
     if (!a) return null;
     // 대기 · 배포대기: 「배포대기 13일」(회색) · 7일 넘게 손대지 않음: 「소식 없음 9일」(빨강) · 그 외: 「3일 전 갱신」
     const text = a.waiting ? t('age.wait', { st: L.statusName(r.status, state.lang), n: a.days })
       : a.overdue ? t('age.stale', { n: a.days })
       : a.days === 0 ? t('age.today') : t('age.updated', { n: a.days });
-    return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: t('age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }) });
+    return el('span', { class: 'row-age' + (a.overdue ? ' overdue' : ''), text, title: ageTitle(a) });
   }
   // 이슈가 올라온 뒤 지난 날: 「접수 12일째」(흐림). 완료면 null
   function openNode(r) {
-    const a = L.ageInfo(r);
+    const a = L.ageInfo(r, Date.now(), state.yt);
     if (!a) return null;
-    return el('span', { class: 'row-open', text: a.received === 0 ? t('age.openToday') : t('age.open', { n: a.received }), title: t('age.title', { r: a.received, n: a.days, d: L.OVERDUE_DAYS }) });
+    return el('span', { class: 'row-open', text: a.received === 0 ? t('age.openToday') : t('age.open', { n: a.received }), title: ageTitle(a) });
   }
   // 「접수 12일째 · 3일 전 갱신」 (상세 · 좁은 화면 한 줄용)
   function ageLine(r) {
@@ -637,7 +650,8 @@
     const r = selectedRow();
     $('detail').hidden = !r;
     if (!r) return;
-    $('detail-when').textContent = `${fmtDateTime(r.received_at)} · ${r.customer}`;
+    // 접수 일시 · 고객사는 아래 제목 밑 줄에 이미 있어 머리 줄에는 다시 쓰지 않는다
+    $('detail-when').textContent = '';
     // 입력 중이던 칸(상태 메모 · 이력)은 다시 그려도 값과 포커스를 지킨다
     const body = $('detail-body');
     const keep = keptInputs(body, r.id);
@@ -783,7 +797,8 @@
 
     // 처리 이력 + 한 줄 추가 (날짜가 없으면 오늘 날짜를 붙인다)
     const hist = el('ol', { class: 'history' }, ...(f.timeline.length
-      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, el('span', { class: 'mono muted', text: when || '—' }), el('span', { class: 'hist-dot' }), el('span', { text })); })
+      // 날짜 없이 쓴 옛 이력은 날짜 칸을 비운다 (「—」가 빠진 값처럼 보여서)
+      ? f.timeline.map((entry) => { const { when, text } = L.splitTimeline(entry); return el('li', {}, ...(when ? [el('span', { class: 'mono muted', text: when })] : []), el('span', { class: 'hist-dot' }), el('span', { text })); })
       : [el('li', { class: 'muted', text: t('detail.noHistory') })]));
     const add = el('input', { type: 'text', maxlength: '2000', placeholder: t('d.historyPh'), 'data-keep': 'hist', 'data-row-id': r.id, 'data-orig': '', 'aria-label': t('btn.history') });
     const histBox = el('div', { class: 'detail-section' }, el('h3', { text: t('detail.history') }), hist, add);
@@ -932,7 +947,7 @@
     const k = L.kpi(base);
     $('kpi-ticketed').textContent = String(k.ticketed);
     $('kpi-ticketed-of').textContent = String(k.total);
-    $('kpi-ticketed-sub').textContent = k.total ? t('kpi.noTicket', { n: k.total - k.ticketed }) : '';
+    $('kpi-ticketed-sub').textContent = !k.total ? '' : k.total === k.ticketed ? t('kpi.allTicketed') : t('kpi.noTicket', { n: k.total - k.ticketed });
     $('kpi-ticketed-bar').style.width = k.total ? `${Math.round((k.ticketed / k.total) * 100)}%` : '0%';
   }
   document.querySelectorAll('.cards .card').forEach((b) => b.addEventListener('click', () => {
@@ -1115,15 +1130,20 @@
     const cur = L.resolveStats(state.all, state.month);
     const prev = L.resolveStats(state.all, shiftMonth(state.month, -1));
     $('resolve-title').textContent = t('rs.title', { m: state.month });
-    $('resolve-sub').textContent = t('rs.sub');
+    // 위쪽 「접수 N건」은 접수 월 기준이라, 여기 완료 건이 어느 달 접수분인지 함께 적는다
+    const year = state.month.slice(0, 4);
+    const from = cur ? cur.byReceived.map(([ym, n]) => I.monthCount(state.lang, ym, ym.slice(0, 4) === year, state.lang === 'ko' ? `${n}건` : n)).join(', ') : '';
+    $('resolve-sub').textContent = from ? `${t('rs.sub')} · ${t('rs.from', { list: from })}` : t('rs.sub');
     const d1 = (x) => (Math.round(x * 10) / 10).toFixed(1).replace(/\.0$/, '');
     if (!cur) { $('resolve-body').replaceChildren(el('p', { class: 'side-empty', text: t('rs.empty') })); return; }
-    const stat = (v, label, cls = '') => el('div', { class: 'rs-stat' }, el('b', { class: 'mono ' + cls, text: v }), el('span', { class: 'muted small', text: label }));
+    const stat = (v, label, cls = '', title = '') => el('div', { class: 'rs-stat' + (title ? ' few' : ''), title }, el('b', { class: 'mono ' + cls, text: v }), el('span', { class: 'muted small', text: label }));
+    // 완료가 3건 미만이면 비율(0% · 100%)이 크게 튀어서 흐리게 보인다
+    const few = cur.n < 3 ? t('rs.few', { n: cur.n }) : '';
     const items = [
       stat(t('rs.days', { n: d1(cur.avg) }), t('rs.avg')),
       stat(t('rs.days', { n: d1(cur.median) }), t('rs.median')),
       stat(t('rs.days', { n: d1(cur.max) }), t('rs.max')),
-      stat(`${Math.round(cur.within7 * 100)}%`, t('rs.within7')),
+      stat(`${Math.round(cur.within7 * 100)}%`, t('rs.within7'), '', few),
       stat(String(cur.n), t('rs.n')),
     ];
     if (prev) {
@@ -1135,13 +1155,14 @@
   function renderFlow() {
     const now = currentMonthKST();
     const end = state.month < shiftMonth(now, -11) ? shiftMonth(state.month, 11) : now;
-    // 기록이 시작되기 전의 빈 달은 빼되 최소 6개월은 보인다
+    // 기록이 시작되기 전의 빈 달은 뺀다 (고른 달은 늘 포함, 최소 3개월)
     const all = L.monthlyFlow(state.all, end, 12);
-    const first = all.findIndex((x) => x.received);
-    const flow = all.slice(Math.min(first < 0 ? 6 : first, 6));
+    const first = all.findIndex((x) => x.received || x.ym === state.month);
+    const flow = all.slice(Math.min(first < 0 ? 9 : first, 9));
     const recv = flow.reduce((a, x) => a + x.received, 0), done = flow.reduce((a, x) => a + x.done, 0);
     $('flow-sum').textContent = t('flow.sum', { months: flow.length, n: recv, done, pct: recv ? Math.round((done / recv) * 100) : 0 });
-    $('flow-chart').style.gridTemplateColumns = `repeat(${flow.length}, minmax(0, 1fr))`;
+    // 막대 칸은 너무 넓어지지 않게, 중간에 낀 0건 달은 좁게
+    $('flow-chart').style.gridTemplateColumns = flow.map((x) => (x.received ? 'minmax(0, 160px)' : 'minmax(0, 72px)')).join(' ');
     const max = Math.max(1, ...flow.map((x) => x.received));
     $('flow-chart').replaceChildren(...flow.map((x) => {
       const pct = x.received ? Math.round((x.done / x.received) * 100) : 0;

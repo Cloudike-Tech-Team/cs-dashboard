@@ -1,6 +1,6 @@
 // CS 대시보드 티켓 조회 Edge Function (YouTrack · Jira)
 //   POST { ids: ['NRF-4817', 'CLDA-82', ...] }
-//   → { tickets: { 'NRF-4817': { source, summary, state, resolved, assignees, url } }, missing: [...], warnings: [...] }
+//   → { tickets: { 'NRF-4817': { source, summary, state, resolved, assignees, url, priority, updated } }, missing: [...], warnings: [...] }
 // 대시보드는 CS 에 연결된 티켓의 담당자·상태를 여기서 읽어 표시만 한다 (DB 에 쓰지 않음).
 // JIRA_PROJECTS 에 든 프로젝트 키는 Jira, 나머지는 YouTrack 으로 조회한다.
 // 한 트래커가 설정 안 됐거나 실패해도 다른 쪽 결과는 돌려주고, 사유는 warnings 에 담는다.
@@ -21,8 +21,8 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const YT_FIELDS = 'idReadable,summary,resolved,customFields($type,name,value(name,fullName,login))';
-const JIRA_FIELDS = 'summary,status,assignee';
+const YT_FIELDS = 'idReadable,summary,resolved,updated,customFields($type,name,value(name,fullName,login))';
+const JIRA_FIELDS = 'summary,status,assignee,updated';
 const CONCURRENCY = 6;
 
 function json(body: unknown, status = 200): Response {

@@ -156,16 +156,21 @@ test('assigneeLine·matchesSearch: YouTrack 값 반영', () => {
   assert.equal(L.matchesSearch(r, 'aurelien'), false);
 });
 
-test('daysSince: 24시간 단위, 미래는 0', () => {
+test('daysSince: KST 달력 날짜 차이, 미래는 0', () => {
   const now = Date.parse('2026-10-27T12:00:00+09:00');
   assert.equal(L.daysSince('2026-10-27T09:00:00+09:00', now), 0);
   assert.equal(L.daysSince('2026-09-27T12:00:00+09:00', now), 30);
   assert.equal(L.daysSince('2026-10-28T00:00:00+09:00', now), 0);
+  // 어제 오후 접수 → 오늘 오전: 24시간이 안 됐어도 1일
+  assert.equal(L.daysSince('2026-10-26T23:30:00+09:00', Date.parse('2026-10-27T00:10:00+09:00')), 1);
+  assert.equal(L.daysSince('2026-10-24T16:00:00+09:00', Date.parse('2026-10-25T09:06:00+09:00')), 1);
+  // UTC 로는 같은 날이어도 KST 로 날짜가 다르면 1
+  assert.equal(L.daysSince('2026-10-26T14:00:00Z', Date.parse('2026-10-26T16:00:00Z')), 1);
 });
 
 test('ageDays: 미해결이면 접수 후 경과일, 완료면 null', () => {
   const now = Date.parse('2026-11-09T12:00:00+09:00');
-  assert.equal(L.ageDays(row({ received_at: '2026-11-04T14:20:00+09:00', status: 'open' }), now), 4);
+  assert.equal(L.ageDays(row({ received_at: '2026-11-04T14:20:00+09:00', status: 'open' }), now), 5);   // 달력 기준 (24시간 단위였으면 4)
   assert.equal(L.ageDays(row({ received_at: '2026-11-09T09:00:00+09:00', status: 'waiting' }), now), 0);
   assert.equal(L.ageDays(row({ received_at: '2026-10-01T09:00:00+09:00', status: 'deploy' }), now), 39);
   assert.equal(L.ageDays(row({ received_at: '2026-10-01T09:00:00+09:00', status: 'done' }), now), null);
@@ -401,13 +406,25 @@ test('sortRows: 급한 순 = 심각도 → 지연 상태 → 오래된 순, 오�
 });
 
 test('ageInfo: 마지막 수정 뒤 지난 날. 7일 이상이면 소식 없음(overdue), 대기 · 배포대기는 waiting(멈춤 아님), 완료면 null', () => {
-  assert.deepEqual(L.ageInfo(R[0], NOW), { days: 2, waiting: false, overdue: false, received: 2 });
-  assert.deepEqual(L.ageInfo(row({ received_at: '2026-11-03T12:00:00+09:00' }), NOW), { days: 7, waiting: false, overdue: true, received: 7 });
+  assert.deepEqual(L.ageInfo(R[0], NOW), { days: 2, waiting: false, overdue: false, received: 2, ticket: false });
+  assert.deepEqual(L.ageInfo(row({ received_at: '2026-11-03T12:00:00+09:00' }), NOW), { days: 7, waiting: false, overdue: true, received: 7, ticket: false });
   // 오래전에 접수했어도 최근에 손댔으면 멈춘 게 아님
-  assert.deepEqual(L.ageInfo(row({ received_at: '2026-10-01T12:00:00+09:00', updated_at: '2026-11-08T12:00:00+09:00' }), NOW), { days: 2, waiting: false, overdue: false, received: 40 });
-  assert.deepEqual(L.ageInfo(R[1], NOW), { days: 29, waiting: true, overdue: false, received: 29 });   // 배포대기
+  assert.deepEqual(L.ageInfo(row({ received_at: '2026-10-01T12:00:00+09:00', updated_at: '2026-11-08T12:00:00+09:00' }), NOW), { days: 2, waiting: false, overdue: false, received: 40, ticket: false });
+  assert.deepEqual(L.ageInfo(R[1], NOW), { days: 29, waiting: true, overdue: false, received: 29, ticket: false });   // 배포대기
   assert.equal(L.ageInfo(R[3], NOW), null);
   assert.equal(L.OVERDUE_DAYS, 7);
+});
+
+test('ageInfo: 연결된 티켓이 더 최근에 갱신됐으면 그때부터 센다 (yt 없으면 콘솔 수정만)', () => {
+  const r = row({ received_at: '2026-10-01T12:00:00+09:00', updated_at: '2026-10-20T12:00:00+09:00', tickets: ['NRF-1', 'NRF-2'] });
+  const yt = { 'NRF-1': { updated: '2026-11-08T10:00:00+09:00' }, 'NRF-2': { updated: '2026-10-25T10:00:00+09:00' } };
+  assert.deepEqual(L.ageInfo(r, NOW, yt), { days: 2, waiting: false, overdue: false, received: 40, ticket: true });
+  assert.equal(L.ageInfo(r, NOW).overdue, true);
+  // 티켓이 콘솔 수정보다 오래됐으면 콘솔 기준
+  assert.equal(L.ageInfo(r, NOW, { 'NRF-1': { updated: '2026-10-02T10:00:00+09:00' } }).ticket, false);
+  // 갱신 시각을 모르는 티켓(옛 응답)은 무시
+  assert.equal(L.ageInfo(r, NOW, { 'NRF-1': { state: 'Open' } }).overdue, true);
+  assert.equal(L.actionCounts([r], yt, NOW).overdue, 0);
 });
 
 test('plainVersion: 앞의 v 는 떼고 저장 (vv2.1.6 방지)', () => {
@@ -600,6 +617,7 @@ test('resolveStats: 그 달에 완료된 건의 접수 → 완료 일수 (완료
   assert.equal(s.max, 35);
   assert.equal(Math.round(s.avg * 10) / 10, 15.7);
   assert.equal(Math.round(s.within7 * 100), 33);
+  assert.deepEqual(s.byReceived, [['2026-11', 2], ['2026-10', 1]]);
   assert.equal(L.resolveStats(rows, '2026-09'), null);
 });
 

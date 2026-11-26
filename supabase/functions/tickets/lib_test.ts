@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from 'jsr:@std/assert@1';
-import { BadRequest, jiraToTicket, mapLimit, MAX_IDS, splitBySource, toTicket, validateIds } from './lib.ts';
+import { BadRequest, isoTime, jiraToTicket, mapLimit, MAX_IDS, splitBySource, toTicket, validateIds } from './lib.ts';
 
 Deno.test('validateIds: 대문자화·중복 제거·형식 아닌 값 버림', () => {
   assertEquals(validateIds({ ids: ['nrf-1', 'NRF-1', ' CLDQA-5142 ', 'https://x/NRF-2', '', null] }), ['NRF-1', 'CLDQA-5142']);
@@ -20,7 +20,7 @@ Deno.test('toTicket: 일반 프로젝트 (State · Assignee)', () => {
   }, 'https://yt.cloudike.io/');
   assertEquals(t, {
     id: 'NRF-4817', source: 'youtrack', summary: '요약', state: 'In Testing', resolved: false,
-    assignees: ['Toussaint Aurelien'], url: 'https://yt.cloudike.io/issue/NRF-4817', priority: '',
+    assignees: ['Toussaint Aurelien'], url: 'https://yt.cloudike.io/issue/NRF-4817', priority: '', updated: '',
   });
 });
 
@@ -67,7 +67,7 @@ Deno.test('jiraToTicket: 상태·완료 분류·담당', () => {
   }, 'https://cloudike.atlassian.net/');
   assertEquals(t, {
     id: 'CLDA-82', source: 'jira', summary: 's', state: '진행 불가 (재현X)', resolved: true,
-    assignees: ['Seungyeon Yoo'], url: 'https://cloudike.atlassian.net/browse/CLDA-82', priority: '',
+    assignees: ['Seungyeon Yoo'], url: 'https://cloudike.atlassian.net/browse/CLDA-82', priority: '', updated: '',
   });
   const u = jiraToTicket({ key: 'CLDA-1', fields: { status: { name: '원인 분석중', statusCategory: { key: 'new' } }, assignee: null } }, 'https://x');
   assertEquals([u.resolved, u.assignees, u.summary], [false, [], '']);
@@ -83,4 +83,12 @@ Deno.test('toTicket: Priority 필드 값을 priority 로 (없으면 빈 문자�
   assertEquals(t.priority, 'Hot Fix');
   assertEquals(toTicket({ idReadable: 'NPR-1', customFields: [] }, 'https://y').priority, '');
   assertEquals(jiraToTicket({ key: 'CLDA-1', fields: {} }, 'https://j').priority, '');
+});
+
+Deno.test('updated: YouTrack ms · Jira 콜론 없는 시간대를 ISO 로 (없거나 못 읽으면 빈 문자열)', () => {
+  assertEquals(toTicket({ idReadable: 'NRF-1', updated: 1795564800000 }, 'https://y').updated, '2026-11-25T00:00:00.000Z');
+  assertEquals(jiraToTicket({ key: 'CLDA-1', fields: { updated: '2026-11-25T09:00:00.000+0900' } }, 'https://j').updated, '2026-11-25T00:00:00.000Z');
+  assertEquals(isoTime('2026-11-25T09:00:00.000+09:00'), '2026-11-25T00:00:00.000Z');
+  assertEquals(isoTime(null), '');
+  assertEquals(isoTime('엉터리'), '');
 });

@@ -701,7 +701,7 @@ dialog::backdrop { background: rgba(10, 15, 25, .45); }
 .flow-legend .sw.done, .flow-stack .done { background: var(--c-done); }
 .flow-legend .sw.rest, .flow-stack .rest { background: var(--line-strong); }
 .flow-legend .muted { margin-left: auto; }
-.flow-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+.flow-chart { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); justify-content: start; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 0; }
 .flow-col { font: inherit; background: none; border: 0; border-radius: 8px; padding: 6px 2px 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text); min-width: 0; }
 .flow-col:hover { background: var(--panel); }
 .flow-col.active { background: var(--accent-soft); }
@@ -748,3 +748,5 @@ dialog::backdrop { background: rgba(10, 15, 25, .45); }
 .rs-stat b { font-size: 20px; font-weight: 600; color: var(--text); }
 .rs-stat b.good { color: var(--c-done); }
 .rs-stat b.bad { color: var(--hot); }
+.rs-stat.few b { color: var(--muted); }
+.rs-stat.few { cursor: help; }
